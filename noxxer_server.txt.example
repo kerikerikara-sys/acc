@@ -1,0 +1,4 @@
+# Pega aqui la URL de tu servidor de licencias (sin barra al final)
+# En desarrollo local:
+http://localhost:3000
+# Cuando lo hostees en internet: https://noxxer-api.tudominio.com

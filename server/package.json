@@ -1,0 +1,18 @@
+{
+  "name": "noxxer-licensing",
+  "version": "1.0.0",
+  "description": "Licensing server + Discord bot for AC Noxxer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "bot": "node bot.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.11.0",
+    "cors": "^2.8.5",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "bcryptjs": "^2.4.3"
+  }
+}

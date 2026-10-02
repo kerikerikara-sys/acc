@@ -1,0 +1,38 @@
+# AC Noxxer
+
+Local scanner for consented screenshares. It looks on **this PC** for traces of FiveM cheats, DMA hardware,
+anti-forensics and related browser / Discord activity. Nothing is uploaded; results stay in the window and in
+a report only if you export one.
+
+## Run
+`ACNoxxer.exe` asks for administrator rights (needed for Prefetch, BAM and event-log checks). Without them it
+still runs, marked LIMITED.
+
+## What it checks
+| Module | Looks at |
+|---|---|
+| System integrity | Secure Boot, test-signing, cleared event logs, Prefetch state |
+| DMA hardware | Xilinx / FTDI FT601 / KMBox devices in the PnP tree |
+| Drivers | Known mapper-abused drivers, drivers in user folders |
+| Processes | Names, window titles, unusual DLLs in FiveM/GTA processes |
+| Execution traces | UserAssist, MuiCache, AppCompat, BAM, Prefetch, Recent, Jump lists, Timeline, PowerShell history |
+| Recycle Bin | Deleted file names and dates |
+| File system | File and folder names across the user profile and drives |
+| File contents | Strings inside exe/dll/sys (ASCII + UTF-16) and text/lua/config files |
+| Browsers | Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Firefox: history, searches, sessions, favicons, cache |
+| Discord | Desktop cache, local storage, IndexedDB (gzip bodies are inflated; author + message extracted) |
+| FiveM | Logs, crash reports, plugins folder, GTA V folder ASI/hooks |
+
+## Custom keywords
+Create `noxxer_keywords.txt` next to the exe, one keyword per line.
+`H:` prefix = high, `L:` = low, none = medium, `!` = whole word only, `#` = comment.
+
+## Rebuild
+```powershell
+powershell -ExecutionPolicy Bypass -File build.ps1
+```
+Uses the .NET Framework compiler that ships with Windows; no SDK needed.
+
+## Limits
+A match is an indicator, not proof. Read each item in context. Brotli-compressed Discord data and live
+process memory are not inspected. Cleared history leaves gaps that a scan cannot fill.
