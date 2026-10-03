@@ -273,18 +273,16 @@ namespace Noxxer
         int filter;
         Button stopBtn;
 
-        AuthSession session;
-        PinSession pinSession;
-        CancellationTokenSource pinCancellation;
+        PinSession pinRequest;   // pending request: the PIN itself only reaches Discord
+        PinSession pinSession;   // verified: holds the single-use scan token
 
-        TextBox pinOptionalUser;
+        TextBox pinOptionalUser, pinEntry;
         TextBlock[] pinDisplayChars;
         TextBlock pinMsg, pinStatus, pinBanner;
-        Button pinRequestBtn, pinCancelBtn;
+        Button pinRequestBtn, pinVerifyBtn;
         Border[] pinBoxes;
         string currentPin;
         bool pinWaiting;
-        object pinLock = new object();
 
         double shownProg, dHigh, dMed, dLow, dFiles, shimmerX = -80, sweepX, dotPhase;
         DateTime lastFrame = DateTime.Now, lastToast = DateTime.MinValue;
@@ -356,7 +354,7 @@ namespace Noxxer
         public MainWindow()
         {
             Title = "AC Noxxer";
-            Width = 1100; Height = 720;
+            Width = 1100; Height = 800;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanMinimize;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -818,30 +816,22 @@ namespace Noxxer
             }
         }
 
-        void UpdatePinBanner(bool force = false)
+        // Tests the server connection on a worker thread; the UI thread must never wait on the network.
+        void CheckServer()
         {
             if (pinBanner == null) return;
-            AuthResult r = Auth.PingServer();
-            pinBanner.Text = r.Error ?? "";
-            pinBanner.Foreground = r.Ok ? Th.Ok : Th.High;
-            pinBanner.Cursor = Cursors.Hand;
-            if (!force)
-            {
-                pinBanner.ToolTip = "Haz click para volver a probar la conexión";
-                pinBanner.MouseLeftButtonUp -= BannerRetryClick;
-                pinBanner.MouseLeftButtonUp += BannerRetryClick;
-            }
-        }
-
-        void BannerRetryClick(object s, MouseButtonEventArgs e)
-        {
+            pinBanner.Text = "Comprobando conexión con el servidor...";
+            pinBanner.Foreground = Th.Muted;
+            pinBanner.Cursor = Cursors.Wait;
             ThreadPool.QueueUserWorkItem(delegate
             {
+                AuthResult r = Auth.PingServer();
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    if (pinBanner != null) { pinBanner.Text = "Comprobando conexión..."; pinBanner.Foreground = Th.Muted; pinBanner.Cursor = Cursors.Wait; }
+                    pinBanner.Text = r.Error ?? "";
+                    pinBanner.Foreground = r.Ok ? Th.Ok : Th.High;
+                    pinBanner.Cursor = Cursors.Hand;
                 }));
-                Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(true); }));
             });
         }
 
@@ -925,10 +915,32 @@ namespace Noxxer
             optHint.TextWrapping = TextWrapping.Wrap;
             pinCard.Children.Add(optHint);
 
+            // PIN entry: the administrator reads the code from Discord and the user types it here
+            Grid pinG = new Grid { Margin = new Thickness(0, 12, 0, 0) };
+            pinG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
+            pinG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            TextBlock pl2 = TB("PIN", 9.5, Th.Dim, true, "Segoe UI Semibold");
+            pl2.VerticalAlignment = VerticalAlignment.Center;
+            pinG.Children.Add(pl2);
+            pinEntry = Tb("", out pinEntry);
+            pinEntry.MaxLength = 8;
+            pinEntry.CharacterCasing = CharacterCasing.Upper;
+            pinEntry.FontFamily = new FontFamily("Consolas");
+            pinEntry.IsEnabled = false;
+            pinEntry.TextChanged += delegate
+            {
+                SetPinDisplay(pinEntry.Text);
+                if (pinVerifyBtn != null) pinVerifyBtn.IsEnabled = !pinWaiting && pinRequest != null && pinEntry.Text.Trim().Length == 8;
+            };
+            pinEntry.KeyDown += delegate(object s, KeyEventArgs e) { if (e.Key == Key.Enter) DoVerifyPin(); };
+            Grid.SetColumn(pinEntry, 1);
+            pinG.Children.Add(pinEntry);
+            pinCard.Children.Add(pinG);
+
             root.Children.Add(card);
 
             // Status line
-            pinStatus = TB("Press REQUEST PING to generate a PIN and send a request to the admin channel on Discord.", 10.5, Th.Muted, false, "Segoe UI Semibold");
+            pinStatus = TB("Press REQUEST PIN. The administrator receives an 8-character PIN on Discord; type it above and press VERIFY.", 10.5, Th.Muted, false, "Segoe UI Semibold");
             pinStatus.TextAlignment = TextAlignment.Center;
             pinStatus.HorizontalAlignment = HorizontalAlignment.Center;
             pinStatus.TextWrapping = TextWrapping.Wrap;
@@ -946,22 +958,21 @@ namespace Noxxer
             Grid btnRow = new Grid { Margin = new Thickness(0, 0, 0, 0) };
             btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            pinRequestBtn = Btn("REQUEST PING", "Primary", delegate { DoRequestPin(); });
+            pinRequestBtn = Btn("REQUEST PIN", "Ghost", delegate { DoRequestPin(); });
             pinRequestBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
             pinRequestBtn.Margin = new Thickness(0, 0, 6, 0);
             pinRequestBtn.Padding = new Thickness(0, 12, 0, 12);
             pinRequestBtn.FontSize = 13;
             Grid.SetColumn(pinRequestBtn, 0);
             btnRow.Children.Add(pinRequestBtn);
-            pinCancelBtn = Btn("CANCEL", "Ghost", delegate { DoCancelPin(); });
-            pinCancelBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
-            pinCancelBtn.Margin = new Thickness(6, 0, 0, 0);
-            pinCancelBtn.Padding = new Thickness(0, 12, 0, 12);
-            pinCancelBtn.FontSize = 13;
-            pinCancelBtn.IsEnabled = false;
-            pinCancelBtn.Opacity = 0.35;
-            Grid.SetColumn(pinCancelBtn, 1);
-            btnRow.Children.Add(pinCancelBtn);
+            pinVerifyBtn = Btn("VERIFY", "Primary", delegate { DoVerifyPin(); });
+            pinVerifyBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
+            pinVerifyBtn.Margin = new Thickness(6, 0, 0, 0);
+            pinVerifyBtn.Padding = new Thickness(0, 12, 0, 12);
+            pinVerifyBtn.FontSize = 13;
+            pinVerifyBtn.IsEnabled = false;
+            Grid.SetColumn(pinVerifyBtn, 1);
+            btnRow.Children.Add(pinVerifyBtn);
             root.Children.Add(btnRow);
 
             TextBlock foot = TB("Server: " + Auth.ServerUrl, 9.5, Th.Dim, false, "Consolas");
@@ -970,28 +981,25 @@ namespace Noxxer
             root.Children.Add(foot);
 
             SetPinDisplay("");
-            ThreadPool.QueueUserWorkItem(delegate { Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(); })); });
+            pinBanner.ToolTip = "Haz click para volver a probar la conexión";
+            pinBanner.MouseLeftButtonUp += delegate { CheckServer(); };
             v.Children.Add(root);
             return v;
         }
 
         void SetPinWaitingUI(bool waiting)
         {
-            lock (pinLock)
-            {
-                pinWaiting = waiting;
-            }
-            if (pinRequestBtn != null)
-            {
-                pinRequestBtn.IsEnabled = !waiting;
-                pinRequestBtn.Opacity = waiting ? 0.4 : 1.0;
-            }
-            if (pinCancelBtn != null)
-            {
-                pinCancelBtn.IsEnabled = waiting;
-                pinCancelBtn.Opacity = waiting ? 1.0 : 0.4;
-            }
-            if (pinOptionalUser != null) pinOptionalUser.IsEnabled = !waiting;
+            pinWaiting = waiting;
+            pinRequestBtn.IsEnabled = !waiting;
+            pinVerifyBtn.IsEnabled = !waiting && pinRequest != null && pinEntry.Text.Trim().Length == 8;
+            pinEntry.IsEnabled = !waiting && pinRequest != null;
+            pinOptionalUser.IsEnabled = !waiting;
+        }
+
+        void ShowPinError(string text)
+        {
+            pinMsg.Foreground = Th.High;
+            pinMsg.Text = text ?? "";
         }
 
         void DoRequestPin()
@@ -999,89 +1007,84 @@ namespace Noxxer
             if (pinWaiting) return;
             pinMsg.Text = "";
             string optUser = (pinOptionalUser.Text ?? "").Trim();
-            SetPinDisplay("");
+            if (Program.PreviewMode)
+            {
+                pinRequest = new PinSession { RequestId = "preview" };
+                SetPinWaitingUI(false);
+                pinStatus.Text = "Preview: type any 8 characters and press VERIFY.";
+                pinEntry.Focus();
+                return;
+            }
             SetPinWaitingUI(true);
-            if (pinStatus != null) { pinStatus.Foreground = Th.Muted; pinStatus.Text = "Solicitando PIN..."; }
+            pinStatus.Foreground = Th.Muted;
+            pinStatus.Text = "Sending request...";
             ThreadPool.QueueUserWorkItem(delegate
             {
-                CancellationTokenSource cts = new CancellationTokenSource();
-                Interlocked.Exchange(ref pinCancellation, cts);
-                try
+                PinResult r = Auth.RequestPin(optUser.Length == 0 ? null : optUser);
+                Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    PinResult rq = Auth.RequestPin(string.IsNullOrWhiteSpace(optUser) ? null : optUser);
-                    Dispatcher.BeginInvoke(new Action(delegate
-                    {
-                        if (!rq.Ok)
-                        {
-                            SetPinWaitingUI(false);
-                            pinMsg.Foreground = Th.High;
-                            pinMsg.Text = rq.Error ?? "Error al solicitar PIN";
-                            if (pinStatus != null) { pinStatus.Foreground = Th.High; pinStatus.Text = "No se pudo solicitar el PIN al servidor."; }
-                            return;
-                        }
-                        SetPinDisplay(rq.Session != null ? rq.Session.Pin : rq.Status);
-                        pinStatus.Foreground = Th.Med;
-                        pinStatus.Text = "Esperando aprobación en Discord... (t=0s)";
-                        if (rq.Session != null)
-                        {
-                            if (string.IsNullOrWhiteSpace(rq.Session.Username) && !string.IsNullOrWhiteSpace(optUser))
-                                rq.Session.Username = optUser.Trim();
-                        }
-                        PinSession mySession = rq.Session;
-                        ThreadPool.QueueUserWorkItem(delegate
-                        {
-                            PinResult final = Auth.PollUntilResolved(mySession, 900, 3000, delegate (string statusMsg)
-                            {
-                                Dispatcher.BeginInvoke(new Action(delegate
-                                {
-                                    if (pinStatus != null) { pinStatus.Foreground = Th.Med; pinStatus.Text = statusMsg; }
-                                }));
-                            }, cts.Token);
-                            Dispatcher.BeginInvoke(new Action(delegate
-                            {
-                                SetPinWaitingUI(false);
-                                if (cts.IsCancellationRequested) return;
-                                if (final.Ok && final.Status == "approved" && final.Session != null)
-                                {
-                                    pinSession = final.Session;
-                                    pinStatus.Foreground = Th.Ok;
-                                    pinStatus.Text = "✅ PIN aprobado. Empezando escaneo...";
-                                    Toast("Autorización concedida", "PIN aprobado por el administrador", Th.Ok);
-                                    Show(1);
-                                }
-                                else
-                                {
-                                    pinMsg.Foreground = Th.High;
-                                    pinMsg.Text = final.Error ?? (final.Status == "expired" ? "Tiempo agotado o PIN expirado. Vuelve a pulsar REQUEST PING." : "Acceso denegado");
-                                    if (pinStatus != null)
-                                    {
-                                        pinStatus.Foreground = final.Status == "expired" ? Th.Med : Th.High;
-                                        pinStatus.Text = final.Status == "expired" ? "PIN expirado. Vuelve a pulsar REQUEST PING." : (final.Error ?? "Acceso denegado");
-                                    }
-                                }
-                            }));
-                        });
-                    }));
-                }
-                catch (Exception ex)
-                {
-                    Dispatcher.BeginInvoke(new Action(delegate
+                    if (!r.Ok)
                     {
                         SetPinWaitingUI(false);
-                        pinMsg.Foreground = Th.High;
-                        pinMsg.Text = "Error: " + ex.Message;
-                    }));
-                }
+                        pinStatus.Foreground = Th.High;
+                        pinStatus.Text = "Could not request a PIN.";
+                        ShowPinError(r.Error ?? "Error al solicitar PIN");
+                        return;
+                    }
+                    pinRequest = r.Session;
+                    pinEntry.Text = "";
+                    SetPinWaitingUI(false);
+                    pinStatus.Foreground = Th.Med;
+                    pinStatus.Text = "PIN sent to the administrator on Discord. Ask them for it, type it above and press VERIFY (valid " + Math.Max(1, r.ExpiresIn / 60) + " min).";
+                    pinEntry.Focus();
+                    Toast("PIN requested", "The administrator received it on Discord", Th.White);
+                }));
             });
         }
 
-        void DoCancelPin()
+        void DoVerifyPin()
         {
-            lock (pinLock) pinWaiting = false;
-            CancellationTokenSource cts = Interlocked.Exchange(ref pinCancellation, null);
-            try { if (cts != null) cts.Cancel(); } catch { }
-            SetPinWaitingUI(false);
-            if (pinStatus != null) { pinStatus.Foreground = Th.Muted; pinStatus.Text = "Solicitud cancelada. Pulsa REQUEST PING para volver a solicitar."; }
+            if (pinWaiting || pinRequest == null) return;
+            string code = (pinEntry.Text ?? "").Trim().ToUpperInvariant();
+            if (code.Length != 8) { ShowPinError("The PIN has 8 characters."); return; }
+            pinMsg.Text = "";
+            if (Program.PreviewMode)
+            {
+                pinSession = new PinSession { RequestId = "preview", Token = "preview" };
+                Show(1);
+                return;
+            }
+            SetPinWaitingUI(true);
+            pinStatus.Foreground = Th.Muted;
+            pinStatus.Text = "Verifying...";
+            PinSession req = pinRequest;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                PinResult r = Auth.VerifyPin(req, code);
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (r.Ok && r.Session != null)
+                    {
+                        pinSession = r.Session;
+                        pinRequest = null;
+                        pinEntry.Text = "";
+                        SetPinWaitingUI(false);
+                        pinStatus.Foreground = Th.Ok;
+                        pinStatus.Text = "PIN verified.";
+                        Toast("Access granted", "PIN verified", Th.Ok);
+                        Show(1);
+                        return;
+                    }
+                    bool dead = r.Code == "expired" || r.Code == "locked" || r.Code == "used" || r.Code == "revoked" || r.Code == "not_found" || r.Code == "hwid";
+                    if (dead) { pinRequest = null; pinEntry.Text = ""; }
+                    if (r.Code == "wrong") pinEntry.Text = "";
+                    SetPinWaitingUI(false);
+                    pinStatus.Foreground = Th.High;
+                    pinStatus.Text = dead ? "Press REQUEST PIN to get a new one." : "Check the PIN and try again.";
+                    ShowPinError((r.Error ?? "Error") + (r.AttemptsLeft >= 0 ? "  (" + r.AttemptsLeft + " attempts left)" : ""));
+                    if (!dead) pinEntry.Focus();
+                }));
+            });
         }
 
         Grid BuildLogin()
@@ -1189,7 +1192,7 @@ namespace Noxxer
                 case 0: sz = new Size(660, 500); break;
                 case 1: sz = new Size(660, 410); break;
                 case 4: sz = new Size(960, 610); break;
-                case 5: sz = new Size(660, 560); break;
+                case 5: sz = new Size(660, 720); break;
                 default: sz = new Size(660, 500); break;
             }
             cardWrap.BeginAnimation(WidthProperty, Anim(cardWrap.ActualWidth > 0 ? cardWrap.ActualWidth : cardWrap.Width, sz.Width, 520, true));
@@ -1222,23 +1225,9 @@ namespace Noxxer
             if (v == 5)
             {
                 statusText.Text = "scan authorization required";
-                if (!Program.PreviewMode) RunConnectionDiagnostic();
+                if (!Program.PreviewMode) CheckServer();
             }
         }
-
-        void RunConnectionDiagnostic()
-        {
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                Dispatcher.BeginInvoke(new Action(delegate
-                {
-                    if (pinBanner != null) { pinBanner.Text = "Comprobando conexión con el servidor..."; pinBanner.Foreground = Th.Muted; pinBanner.Cursor = Cursors.Wait; }
-                }));
-                Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(true); }));
-            });
-        }
-
-
 
         void OnLoaded(object s, RoutedEventArgs e)
         {
@@ -1267,22 +1256,13 @@ namespace Noxxer
         void StartScan()
         {
             if (Program.PreviewMode) return;
-            bool hasAnyAuth = session != null || pinSession != null;
-            if (!hasAnyAuth) { Toast("Acceso denegado", "Debes solicitar un PIN y aprobarlo en Discord", Th.High); Show(5); return; }
-            if (!consented || eng.Running) return;
-
-            if (session != null)
+            if (pinSession == null || string.IsNullOrEmpty(pinSession.Token))
             {
-                AuthResult v = Auth.Verify(session);
-                if (!v.Ok)
-                {
-                    Toast("Licencia inválida", v.Error ?? "Licencia no válida", Th.High);
-                    session = null;
-                    Show(5);
-                    return;
-                }
-                session = v.Session;
+                Toast("Authorization required", "Request a PIN and verify it first", Th.High);
+                Show(5);
+                return;
             }
+            if (!consented || eng.Running) return;
 
             dHigh = dMed = dLow = dFiles = 0;
             shownProg = 0;
@@ -1352,13 +1332,18 @@ namespace Noxxer
             {
                 try { notify.ShowBalloonTip(5000, "AC Noxxer  -  " + word, sub, v == 2 ? System.Windows.Forms.ToolTipIcon.Warning : System.Windows.Forms.ToolTipIcon.Info); } catch { }
             }
-            if (session != null || pinSession != null)
+            if (pinSession != null && !Program.PreviewMode)
             {
-                AuthSession sess = session;
                 PinSession ps = pinSession;
+                pinSession = null;   // the token is single-use: a new scan needs a new PIN
                 ThreadPool.QueueUserWorkItem(delegate
                 {
-                    try { Auth.SubmitScan(sess, eng, ps); } catch { }
+                    AuthResult r = Auth.SubmitScan(ps, eng);
+                    Dispatcher.BeginInvoke(new Action(delegate
+                    {
+                        if (r.Ok) Toast("Results sent", "The administrator received the scan", Th.Ok);
+                        else Toast("Results not sent", r.Error ?? "Unknown error", Th.High);
+                    }));
                 });
             }
         }
