@@ -22,10 +22,22 @@ namespace Noxxer
     // ===================================================================== theme
     static class Th
     {
+        // Display face: condensed technical look, graceful fallback if Bahnschrift is absent.
+        public const string Display = "Bahnschrift SemiBold, Segoe UI Semibold";
+        public const string DisplayLt = "Bahnschrift, Segoe UI Semibold";
+        public const string Mono = "Consolas";
+
         public static Color C(string hex) { return (Color)ColorConverter.ConvertFromString(hex); }
         public static SolidColorBrush Frozen(string hex)
         {
             SolidColorBrush b = new SolidColorBrush(C(hex));
+            b.Freeze();
+            return b;
+        }
+        public static SolidColorBrush FrozenA(string hex, byte a)
+        {
+            Color c = C(hex);
+            SolidColorBrush b = new SolidColorBrush(Color.FromArgb(a, c.R, c.G, c.B));
             b.Freeze();
             return b;
         }
@@ -35,13 +47,14 @@ namespace Noxxer
             b.Freeze();
             return b;
         }
-        public static readonly Brush Black = Frozen("#0A0A0A");
+        public static readonly Brush Black = Frozen("#070A12");
         public static readonly Brush White = Frozen("#FFFFFF");
-        public static readonly Brush Panel = Frozen("#121212");
-        public static readonly Brush PanelHi = Frozen("#1A1A1A");
-        public static readonly Brush Line = Frozen("#2E2E2E");
-        public static readonly Brush LineSoft = Frozen("#232323");
-        public static readonly Brush Track = Frozen("#1C1C1C");
+        public static readonly Brush Panel = Frozen("#0E131F");
+        public static readonly Brush Glass = FrozenA("#0C111C", 228);
+        public static readonly Brush PanelHi = Frozen("#161D2C");
+        public static readonly Brush Line = Frozen("#283040");
+        public static readonly Brush LineSoft = Frozen("#1C2230");
+        public static readonly Brush Track = Frozen("#161B28");
         public static readonly Brush Dim = Frozen("#7A7A7A");
         public static readonly Brush Muted = Frozen("#B4B4B4");
         public static readonly Brush Soft = Frozen("#E2E2E2");
@@ -68,23 +81,23 @@ namespace Noxxer
 <ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
                     xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
   <SolidColorBrush x:Key='BWhite' Color='#FFFFFF'/>
-  <SolidColorBrush x:Key='BBlack' Color='#0A0A0A'/>
-  <SolidColorBrush x:Key='BLine'  Color='#2E2E2E'/>
+  <SolidColorBrush x:Key='BBlack' Color='#070A12'/>
+  <SolidColorBrush x:Key='BLine'  Color='#283040'/>
   <SolidColorBrush x:Key='BGray'  Color='#8A8A8A'/>
 
   <!-- Primary button: solid white, sharp corners -->
   <Style x:Key='Primary' TargetType='Button'>
     <Setter Property='Foreground' Value='#0A0A0A'/>
     <Setter Property='Background' Value='#FFFFFF'/>
-    <Setter Property='FontFamily' Value='Segoe UI Semibold'/>
-    <Setter Property='FontSize' Value='13'/>
+    <Setter Property='FontFamily' Value='Bahnschrift SemiBold, Segoe UI Semibold'/>
+    <Setter Property='FontSize' Value='12.5'/>
     <Setter Property='Cursor' Value='Hand'/>
     <Setter Property='Padding' Value='28,12'/>
     <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Button'>
-          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#FFFFFF' BorderThickness='1' Padding='{TemplateBinding Padding}'>
+          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#FFFFFF' BorderThickness='1' CornerRadius='8' Padding='{TemplateBinding Padding}'>
             <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextBlock.Foreground='{TemplateBinding Foreground}'/>
           </Border>
           <ControlTemplate.Triggers>
@@ -110,7 +123,7 @@ namespace Noxxer
   <Style x:Key='Ghost' TargetType='Button'>
     <Setter Property='Foreground' Value='#FFFFFF'/>
     <Setter Property='Background' Value='Transparent'/>
-    <Setter Property='FontFamily' Value='Segoe UI Semibold'/>
+    <Setter Property='FontFamily' Value='Bahnschrift SemiBold, Segoe UI Semibold'/>
     <Setter Property='FontSize' Value='12'/>
     <Setter Property='Cursor' Value='Hand'/>
     <Setter Property='Padding' Value='22,12'/>
@@ -118,7 +131,7 @@ namespace Noxxer
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Button'>
-          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#2E2E2E' BorderThickness='1' Padding='{TemplateBinding Padding}'>
+          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#283040' BorderThickness='1' CornerRadius='8' Padding='{TemplateBinding Padding}'>
             <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextBlock.Foreground='{TemplateBinding Foreground}'/>
           </Border>
           <ControlTemplate.Triggers>
@@ -132,7 +145,7 @@ namespace Noxxer
             </Trigger>
             <Trigger Property='IsEnabled' Value='False'>
               <Setter TargetName='B' Property='Background' Value='Transparent'/>
-              <Setter TargetName='B' Property='BorderBrush' Value='#262626'/>
+              <Setter TargetName='B' Property='BorderBrush' Value='#1C2230'/>
               <Setter Property='Foreground' Value='#5A5A5A'/>
             </Trigger>
           </ControlTemplate.Triggers>
@@ -159,7 +172,7 @@ namespace Noxxer
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property='IsMouseOver' Value='True'>
-              <Setter TargetName='B' Property='Background' Value='#1C1C1C'/>
+              <Setter TargetName='B' Property='Background' Value='#161B28'/>
               <Setter Property='Foreground' Value='#FFFFFF'/>
             </Trigger>
           </ControlTemplate.Triggers>
@@ -191,7 +204,7 @@ namespace Noxxer
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Thumb'>
-          <Border x:Name='T' Background='#3A3A3A'/>
+          <Border x:Name='T' Background='#2E3850' CornerRadius='3'/>
           <ControlTemplate.Triggers>
             <Trigger Property='IsMouseOver' Value='True'>
               <Setter TargetName='T' Property='Background' Value='#FFFFFF'/>
@@ -207,7 +220,7 @@ namespace Noxxer
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='ScrollBar'>
-          <Grid Background='#0A0A0A'>
+          <Grid Background='#070A12'>
             <Track x:Name='PART_Track' IsDirectionReversed='True'>
               <Track.Thumb>
                 <Thumb Style='{StaticResource ScrollThumb}'/>
@@ -221,31 +234,180 @@ namespace Noxxer
 </ResourceDictionary>";
     }
 
-    // ===================================================================== solid background (clean, gradient-free)
-    class SolidBg : FrameworkElement
+    // ===================================================================== animated starfield background
+    class SpaceBg : FrameworkElement
     {
-        public SolidBg()
+        sealed class Star { public double X, Y, R, Base, Amp, Spd, Phase, Drift; public bool Bright; }
+
+        readonly List<Star> stars = new List<Star>();
+        readonly Random rnd = new Random();
+        readonly SolidColorBrush[] alpha = new SolidColorBrush[21];
+        Brush nb0, nb1, nb2;
+        double t;
+        DateTime last = DateTime.Now;
+        double shootX, shootY, shootVX, shootVY, shootLife = -1, shootMax = 1, nextShoot = 3.5;
+
+        public SpaceBg()
         {
             IsHitTestVisible = false;
-            Loaded += delegate { InvalidateVisual(); };
+            for (int i = 0; i <= 20; i++)
+            {
+                SolidColorBrush b = new SolidColorBrush(Color.FromArgb((byte)(i * 255 / 20), 235, 240, 255));
+                b.Freeze();
+                alpha[i] = b;
+            }
+            nb0 = Glow(Th.C("#1A2550"), 150);
+            nb1 = Glow(Th.C("#2A1C46"), 130);
+            nb2 = Glow(Th.C("#0F2038"), 120);
+            Loaded += delegate { Seed(); CompositionTarget.Rendering += OnTick; };
+            Unloaded += delegate { CompositionTarget.Rendering -= OnTick; };
+        }
+
+        static Brush Glow(Color col, byte a)
+        {
+            RadialGradientBrush rg = new RadialGradientBrush();
+            rg.GradientStops.Add(new GradientStop(Color.FromArgb(a, col.R, col.G, col.B), 0));
+            rg.GradientStops.Add(new GradientStop(Color.FromArgb((byte)(a / 3), col.R, col.G, col.B), 0.45));
+            rg.GradientStops.Add(new GradientStop(Color.FromArgb(0, col.R, col.G, col.B), 1));
+            rg.Freeze();
+            return rg;
+        }
+
+        SolidColorBrush A(double a)
+        {
+            int i = (int)(a * 20 + 0.5);
+            if (i < 0) i = 0;
+            if (i > 20) i = 20;
+            return alpha[i];
+        }
+
+        void Seed()
+        {
+            stars.Clear();
+            double W = ActualWidth > 1 ? ActualWidth : 960;
+            double H = ActualHeight > 1 ? ActualHeight : 680;
+            int count = (int)(W * H / 3600);
+            if (count < 90) count = 90;
+            if (count > 220) count = 220;
+            for (int i = 0; i < count; i++)
+            {
+                Star s = new Star();
+                s.X = rnd.NextDouble() * W;
+                s.Y = rnd.NextDouble() * H;
+                s.R = 0.35 + rnd.NextDouble() * rnd.NextDouble() * 1.7;
+                s.Bright = s.R > 1.3;
+                s.Base = 0.15 + rnd.NextDouble() * 0.45;
+                s.Amp = 0.08 + rnd.NextDouble() * 0.35;
+                s.Spd = 0.4 + rnd.NextDouble() * 1.6;
+                s.Phase = rnd.NextDouble() * 6.283;
+                // smaller stars drift slower: cheap parallax
+                s.Drift = 1.2 + s.R * 3.5;
+                stars.Add(s);
+            }
+        }
+
+        void OnTick(object sender, EventArgs e)
+        {
+            if (!IsVisible) return;
+            DateTime now = DateTime.Now;
+            double dt = (now - last).TotalSeconds;
+            if (dt > 0.05) dt = 0.05;
+            last = now;
+            t += dt;
+
+            double W = ActualWidth, H = ActualHeight;
+            for (int i = 0; i < stars.Count; i++)
+            {
+                Star s = stars[i];
+                s.Y += s.Drift * dt;
+                s.X += s.Drift * dt * 0.18;
+                if (s.Y > H + 3) { s.Y = -3; s.X = rnd.NextDouble() * W; }
+                if (s.X > W + 3) s.X = -3;
+            }
+
+            if (shootLife < 0)
+            {
+                nextShoot -= dt;
+                if (nextShoot <= 0 && W > 1)
+                {
+                    shootX = W * (0.05 + rnd.NextDouble() * 0.6);
+                    shootY = H * (0.02 + rnd.NextDouble() * 0.35);
+                    double sp = 520 + rnd.NextDouble() * 280;
+                    double ang = 0.35 + rnd.NextDouble() * 0.35;
+                    shootVX = sp * Math.Cos(ang);
+                    shootVY = sp * Math.Sin(ang);
+                    shootMax = shootLife = 0.5 + rnd.NextDouble() * 0.4;
+                }
+            }
+            else
+            {
+                shootX += shootVX * dt;
+                shootY += shootVY * dt;
+                shootLife -= dt;
+                if (shootLife <= 0) { shootLife = -1; nextShoot = 5 + rnd.NextDouble() * 9; }
+            }
+            InvalidateVisual();
         }
 
         protected override void OnRender(DrawingContext dc)
         {
             double W = ActualWidth, H = ActualHeight;
             if (W < 1 || H < 1) return;
+            if (stars.Count == 0) Seed();
 
-            // Solid black base
             dc.DrawRectangle(Th.Black, null, new Rect(0, 0, W, H));
 
-            // Subtle dark vignette top / bottom (solid color bands)
-            dc.DrawRectangle(Th.Frozen("#0F0F0F"), null, new Rect(0, 0, W, Math.Min(200, H * 0.35)));
+            // slow breathing nebulae
+            double g = Math.Max(W, H);
+            double br = 1 + 0.04 * Math.Sin(t * 0.35);
+            dc.PushOpacity(0.85 + 0.15 * Math.Sin(t * 0.22));
+            dc.DrawEllipse(nb0, null, new Point(W * 0.18, H * 0.25), g * 0.48 * br, g * 0.36 * br);
+            dc.DrawEllipse(nb1, null, new Point(W * 0.86, H * 0.8), g * 0.44, g * 0.34 * br);
+            dc.DrawEllipse(nb2, null, new Point(W * 0.55, -H * 0.05), g * 0.4 * br, g * 0.22);
+            dc.Pop();
 
-            // Single 1px horizontal hairline for structure (pure white, low alpha)
-            double y = H * 0.62;
-            Pen p = new Pen(Th.WhiteA(0.04), 1);
-            p.Freeze();
-            dc.DrawLine(p, new Point(0, y), new Point(W, y));
+            for (int i = 0; i < stars.Count; i++)
+            {
+                Star s = stars[i];
+                double a = s.Base + s.Amp * Math.Sin(t * s.Spd + s.Phase);
+                if (a < 0) a = 0; else if (a > 1) a = 1;
+                Point p = new Point(s.X, s.Y);
+                if (s.Bright)
+                {
+                    dc.DrawEllipse(A(a * 0.18), null, p, s.R * 3.4, s.R * 3.4);
+                    // tiny cross glint on the brightest moments
+                    if (a > 0.7)
+                    {
+                        Pen gp = new Pen(A((a - 0.7) * 1.4), 0.6);
+                        double l = s.R * 4.5;
+                        dc.DrawLine(gp, new Point(p.X - l, p.Y), new Point(p.X + l, p.Y));
+                        dc.DrawLine(gp, new Point(p.X, p.Y - l), new Point(p.X, p.Y + l));
+                    }
+                }
+                dc.DrawEllipse(A(a), null, p, s.R, s.R);
+            }
+
+            if (shootLife >= 0)
+            {
+                double mag = Math.Sqrt(shootVX * shootVX + shootVY * shootVY);
+                double life = shootLife / shootMax;          // 1 -> 0
+                double fade = Math.Min(1, Math.Min(life * 3, (1 - life) * 6));
+                double len = 150 * fade + 20;
+                Point head = new Point(shootX, shootY);
+                Point tail = new Point(shootX - shootVX / mag * len, shootY - shootVY / mag * len);
+                LinearGradientBrush lg = new LinearGradientBrush();
+                lg.MappingMode = BrushMappingMode.Absolute;
+                lg.StartPoint = tail;
+                lg.EndPoint = head;
+                lg.GradientStops.Add(new GradientStop(Color.FromArgb(0, 200, 215, 255), 0));
+                lg.GradientStops.Add(new GradientStop(Color.FromArgb((byte)(220 * fade), 240, 245, 255), 1));
+                Pen tp = new Pen(lg, 1.4);
+                tp.StartLineCap = PenLineCap.Round;
+                tp.EndLineCap = PenLineCap.Round;
+                dc.DrawLine(tp, tail, head);
+                dc.DrawEllipse(A(0.35 * fade), null, head, 4, 4);
+                dc.DrawEllipse(A(0.95 * fade), null, head, 1.3, 1.3);
+            }
         }
     }
 
@@ -253,9 +415,9 @@ namespace Noxxer
     class MainWindow : Window
     {
         readonly Engine eng = new Engine();
-        SolidBg bg;
+        SpaceBg bg;
         Grid cardWrap;
-        StackPanel header;
+        StackPanel header, titlePanel;
         Grid[] views = new Grid[6];
         int view = -1;
 
@@ -329,13 +491,36 @@ namespace Noxxer
             return a;
         }
 
+        // soft, endless breathing on opacity + scale
+        static void Pulse(FrameworkElement el, double scale, int ms)
+        {
+            ScaleTransform st = new ScaleTransform(1, 1);
+            el.RenderTransformOrigin = new Point(0.5, 0.5);
+            el.RenderTransform = st;
+            SineEase se = new SineEase { EasingMode = EasingMode.EaseInOut };
+            DoubleAnimation o = new DoubleAnimation(1, 0.35, TimeSpan.FromMilliseconds(ms)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = se };
+            DoubleAnimation k = new DoubleAnimation(1, scale, TimeSpan.FromMilliseconds(ms)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = se };
+            el.BeginAnimation(OpacityProperty, o);
+            st.BeginAnimation(ScaleTransform.ScaleXProperty, k);
+            st.BeginAnimation(ScaleTransform.ScaleYProperty, k);
+        }
+
+        static void Pop(FrameworkElement el, int delayMs)
+        {
+            ScaleTransform st = el.RenderTransform as ScaleTransform;
+            if (st == null) return;
+            DoubleAnimation a = new DoubleAnimation(0.6, 1, TimeSpan.FromMilliseconds(420)) { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.5 }, BeginTime = TimeSpan.FromMilliseconds(delayMs) };
+            st.BeginAnimation(ScaleTransform.ScaleXProperty, a);
+            st.BeginAnimation(ScaleTransform.ScaleYProperty, a);
+        }
+
         UIElement Stat(int idx, TextBlock[] store, string label, Brush color)
         {
-            StackPanel sp = new StackPanel { Margin = new Thickness(18, 0, 18, 0) };
-            TextBlock n = TB("0", 26, color, true, "Segoe UI Semibold");
+            StackPanel sp = new StackPanel { Margin = new Thickness(14, 0, 14, 0) };
+            TextBlock n = TB("0", 24, color, false, Th.Display);
             n.HorizontalAlignment = HorizontalAlignment.Center;
             store[idx] = n;
-            TextBlock l = TB(Spaced(label), 9.5, Th.Dim);
+            TextBlock l = TB(label.ToLowerInvariant(), 10.5, Th.Dim, false, Th.DisplayLt);
             l.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(n);
             sp.Children.Add(l);
@@ -356,7 +541,7 @@ namespace Noxxer
         public MainWindow()
         {
             Title = "AC Noxxer";
-            Width = 1100; Height = 720;
+            Width = 940; Height = 640;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanMinimize;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -376,14 +561,14 @@ namespace Noxxer
             catch { }
 
             Grid root = new Grid();
-            bg = new SolidBg();
+            bg = new SpaceBg();
             root.Children.Add(bg);
             root.Children.Add(BuildCard());
             root.Children.Add(BuildTitleBar());
-            toastHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 52, 16, 0), Width = 320 };
+            toastHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 48, 14, 0), Width = 280 };
             root.Children.Add(toastHost);
 
-            Border frame = new Border { BorderBrush = Th.LineSoft, BorderThickness = new Thickness(1), Child = root };
+            Border frame = new Border { BorderBrush = Th.Line, BorderThickness = new Thickness(1), Child = root };
             Content = frame;
 
             Closing += delegate { eng.Stop(); };
@@ -398,23 +583,23 @@ namespace Noxxer
 
         UIElement BuildTitleBar()
         {
-            Grid bar = new Grid { Height = 36, VerticalAlignment = VerticalAlignment.Top, Background = Th.Black };
+            Grid bar = new Grid { Height = 36, VerticalAlignment = VerticalAlignment.Top, Background = Brushes.Transparent };
             bar.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e) { try { DragMove(); } catch { } };
 
             Grid left = new Grid { Margin = new Thickness(16, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
             left.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             left.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            Border logo = new Border { Background = Th.White, Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-            logo.Child = TB("N", 13, Th.Black, true, "Segoe UI Black");
+            Border logo = new Border { BorderBrush = Th.WhiteA(0.55), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+            logo.Child = TB("N", 11, Th.White, false, Th.Display);
             ((TextBlock)logo.Child).HorizontalAlignment = HorizontalAlignment.Center;
             ((TextBlock)logo.Child).VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(logo, 0);
             left.Children.Add(logo);
 
-            TextBlock l = TB("NOXXER" + "   ·   v1.0", 10.5, Th.Muted);
+            TextBlock l = TB("noxxer  /  v1.0", 11, Th.Dim);
             l.VerticalAlignment = VerticalAlignment.Center;
-            l.FontFamily = new FontFamily("Segoe UI Semibold");
+            l.FontFamily = new FontFamily(Th.DisplayLt);
             Grid.SetColumn(l, 1);
             left.Children.Add(l);
 
@@ -435,11 +620,11 @@ namespace Noxxer
 
         UIElement BuildCard()
         {
-            cardWrap = new Grid { Width = 680, Height = 520, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 34, 0, 0), RenderTransformOrigin = new Point(0.5, 0.5) };
+            cardWrap = new Grid { Width = 560, Height = 440, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 34, 0, 0), RenderTransformOrigin = new Point(0.5, 0.5) };
             cardWrap.RenderTransform = new ScaleTransform(0.9, 0.9);
             cardWrap.Opacity = 0;
 
-            Border card = new Border { Background = Th.Panel, BorderBrush = Th.Line, BorderThickness = new Thickness(1) };
+            Border card = new Border { Background = Th.Glass, BorderBrush = Th.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(14) };
             Grid g = new Grid();
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -475,15 +660,16 @@ namespace Noxxer
 
         StackPanel BuildHeader()
         {
-            StackPanel h = new StackPanel { Margin = new Thickness(0, 30, 0, 0) };
+            StackPanel h = new StackPanel { Margin = new Thickness(0, 24, 0, 0) };
 
-            StackPanel title = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            StackPanel title = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, RenderTransform = new TranslateTransform() };
+            titlePanel = title;
             string word = "NOXXER";
             letters = new TextBlock[word.Length];
             for (int i = 0; i < word.Length; i++)
             {
-                TextBlock t = TB(word[i].ToString(), 44, Th.White, false, "Segoe UI Black");
-                t.Margin = new Thickness(1, 0, 1, 0);
+                TextBlock t = TB(word[i].ToString(), 34, Th.White, false, Th.Display);
+                t.Margin = new Thickness(4, 0, 4, 0);
                 t.RenderTransform = new TranslateTransform(0, 20);
                 t.Opacity = 0;
                 letters[i] = t;
@@ -492,17 +678,17 @@ namespace Noxxer
             h.Children.Add(title);
 
             // Divider solid 1px
-            Border div = new Border { Background = Th.LineSoft, Height = 1, Margin = new Thickness(48, 20, 48, 0), HorizontalAlignment = HorizontalAlignment.Stretch };
+            Border div = new Border { Background = Th.LineSoft, Height = 1, Margin = new Thickness(40, 16, 40, 0), HorizontalAlignment = HorizontalAlignment.Stretch };
             h.Children.Add(div);
 
-            Grid pr = new Grid { Margin = new Thickness(44, 16, 44, 4) };
-            pr.Children.Add(TB("PROGRESS", 9.5, Th.Dim, true, "Segoe UI Semibold"));
+            Grid pr = new Grid { Margin = new Thickness(40, 14, 40, 5) };
+            pr.Children.Add(TB("progress", 10.5, Th.Dim, false, Th.DisplayLt));
             pctText = TB("0%", 10, Th.Muted, false, "Consolas");
             pctText.HorizontalAlignment = HorizontalAlignment.Right;
             pr.Children.Add(pctText);
             h.Children.Add(pr);
 
-            trackHost = new Grid { Height = 3, Margin = new Thickness(44, 0, 44, 0), ClipToBounds = true };
+            trackHost = new Grid { Height = 2, Margin = new Thickness(40, 0, 40, 0), ClipToBounds = true };
             track = new Border { Background = Th.Track };
             trackHost.Children.Add(track);
             idleSweep = new System.Windows.Shapes.Rectangle { Width = 80, Fill = Th.Frozen("#4A4A4A"), HorizontalAlignment = HorizontalAlignment.Left, RenderTransform = new TranslateTransform() };
@@ -515,33 +701,33 @@ namespace Noxxer
             trackHost.Children.Add(fill);
             h.Children.Add(trackHost);
 
-            statusText = TB("ready", 13, Th.White, false, "Segoe UI Semibold");
+            statusText = TB("ready", 12, Th.Muted, false, Th.DisplayLt);
             statusText.HorizontalAlignment = HorizontalAlignment.Center;
-            statusText.Margin = new Thickness(0, 14, 0, 0);
+            statusText.Margin = new Thickness(0, 12, 0, 0);
             h.Children.Add(statusText);
             return h;
         }
 
         Grid BuildConsent()
         {
-            Grid v = new Grid { Margin = new Thickness(52, 10, 52, 30) };
+            Grid v = new Grid { Margin = new Thickness(40, 6, 40, 24) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
-            TextBlock t1 = TB("TERMS & PRIVACY", 11, Th.White, true, "Segoe UI Semibold");
+            TextBlock t1 = TB("Terms & privacy", 17, Th.White, false, Th.Display);
             t1.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(t1);
 
             // divider
-            Border d = new Border { Background = Th.Line, Height = 1, Width = 48, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 18) };
+            Border d = new Border { Background = Th.Line, Height = 1, Width = 48, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 12, 0, 14) };
             sp.Children.Add(d);
 
             TextBlock t2 = TB("By selecting Accept, you agree to the Terms of Service and Privacy Policy. The scan checks this PC for cheat, DMA, driver, process, file, browser, Discord and FiveM indicators. It also reads executable private memory in FiveM/GTA processes when available.\n\n" +
                 "Sign-in sends your account credentials, license key and a device identifier to the configured server. After a scan, its findings are also submitted there; findings can include process names, file paths and matched text.\n\n" +
-                "Continue only on a device you own or are authorized to inspect.", 12, Th.Muted);
+                "Continue only on a device you own or are authorized to inspect.", 11, Th.Muted);
             t2.TextWrapping = TextWrapping.Wrap;
             t2.TextAlignment = TextAlignment.Center;
             t2.Margin = new Thickness(0, 0, 0, 0);
-            t2.LineHeight = 20;
+            t2.LineHeight = 17;
             sp.Children.Add(t2);
 
             TextBlock links = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0), Foreground = Th.Dim, FontSize = 11 };
@@ -554,7 +740,7 @@ namespace Noxxer
             links.Inlines.Add(privacy);
             sp.Children.Add(links);
 
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 30, 0, 0) };
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) };
             Button ok = Btn("ACCEPT", "Primary", delegate
             {
                 consented = true;
@@ -562,7 +748,7 @@ namespace Noxxer
                 else Show(5);
             });
             ok.Margin = new Thickness(0, 0, 10, 0);
-            ok.Padding = new Thickness(48, 12, 48, 12);
+            ok.Padding = new Thickness(38, 10, 38, 10);
             row.Children.Add(ok);
             row.Children.Add(Btn("DECLINE", "Ghost", delegate { Close(); }));
             sp.Children.Add(row);
@@ -578,45 +764,46 @@ namespace Noxxer
 
         Grid BuildIdle()
         {
-            Grid v = new Grid { Margin = new Thickness(52, 6, 52, 28) };
+            Grid v = new Grid { Margin = new Thickness(40, 4, 40, 22) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
             // Solid status bar (dot + text)
-            Grid bar = new Grid { Margin = new Thickness(0, 0, 0, 28), HorizontalAlignment = HorizontalAlignment.Center };
+            Grid bar = new Grid { Margin = new Thickness(0, 0, 0, 18), HorizontalAlignment = HorizontalAlignment.Center };
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            Border dot = new Border { Background = Th.Ok, Width = 8, Height = 8, CornerRadius = new CornerRadius(4), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+            Border dot = new Border { Background = Th.Ok, Width = 7, Height = 7, CornerRadius = new CornerRadius(3.5), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 9, 0) };
+            Pulse(dot, 1.6, 1300);
             Grid.SetColumn(dot, 0);
             bar.Children.Add(dot);
-            TextBlock st = TB("AUTHORIZED", 10, Th.Ok, true, "Segoe UI Semibold");
+            TextBlock st = TB("authorized", 11, Th.Ok, false, Th.DisplayLt);
             st.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(st, 1);
             bar.Children.Add(st);
             sp.Children.Add(bar);
 
-            TextBlock title = TB("Ready to scan", 28, Th.White, true, "Segoe UI Semibold");
+            TextBlock title = TB("Ready to scan", 26, Th.White, false, Th.Display);
             title.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(title);
 
-            TextBlock d = TB("Memory integrity, active connections, game memory, processes, drivers, DMA hardware, traces, files, browsers, Discord and FiveM will be checked.", 12, Th.Muted);
+            TextBlock d = TB("Memory integrity, active connections, game memory, processes, drivers, DMA hardware, traces, files, browsers, Discord and FiveM will be checked.", 11.5, Th.Muted);
             d.TextWrapping = TextWrapping.Wrap;
             d.TextAlignment = TextAlignment.Center;
             d.Margin = new Thickness(0, 10, 0, 0);
-            d.MaxWidth = 520;
+            d.MaxWidth = 430;
             d.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(d);
 
             Button start = Btn("START SCAN", "Primary", delegate { StartScan(); });
             start.HorizontalAlignment = HorizontalAlignment.Center;
-            start.Margin = new Thickness(0, 32, 0, 0);
-            start.FontSize = 14;
-            start.Padding = new Thickness(64, 16, 64, 16);
+            start.Margin = new Thickness(0, 24, 0, 0);
+            start.FontSize = 13;
+            start.Padding = new Thickness(52, 12, 52, 12);
             start.IsEnabled = !Program.PreviewMode;
             sp.Children.Add(start);
 
             TextBlock f = TB(Rules.All.Count + " signatures loaded   ·   " + (eng.Admin ? "full coverage" : "run as administrator for full coverage"), 10, Th.Dim, false, "Consolas");
             f.HorizontalAlignment = HorizontalAlignment.Center;
-            f.Margin = new Thickness(0, 22, 0, 0);
+            f.Margin = new Thickness(0, 16, 0, 0);
             sp.Children.Add(f);
 
             v.Children.Add(sp);
@@ -625,17 +812,17 @@ namespace Noxxer
 
         Grid BuildScan()
         {
-            Grid v = new Grid { Margin = new Thickness(52, 6, 52, 22) };
+            Grid v = new Grid { Margin = new Thickness(40, 4, 40, 18) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
-            moduleText = TB("", 11, Th.White, true, "Segoe UI Semibold");
+            moduleText = TB("", 13, Th.White, false, Th.Display);
             moduleText.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(moduleText);
 
             activityText = TB("", 10.5, Th.Dim, false, "Consolas");
             activityText.HorizontalAlignment = HorizontalAlignment.Center;
             activityText.TextTrimming = TextTrimming.CharacterEllipsis;
-            activityText.MaxWidth = 560;
+            activityText.MaxWidth = 470;
             activityText.Margin = new Thickness(0, 6, 0, 0);
             sp.Children.Add(activityText);
 
@@ -643,20 +830,20 @@ namespace Noxxer
             StackPanel pr = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) };
             for (int i = 0; i < pips.Length; i++)
             {
-                Border b = new Border { Width = 14, Height = 14, Margin = new Thickness(3, 0, 3, 0), Background = Th.Track, BorderBrush = Th.LineSoft, BorderThickness = new Thickness(1), RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(1, 1), ToolTip = eng.Modules[i].Name, CornerRadius = new CornerRadius(1) };
+                Border b = new Border { Width = 9, Height = 9, Margin = new Thickness(3, 0, 3, 0), Background = Th.Track, BorderBrush = Th.LineSoft, BorderThickness = new Thickness(1), RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(1, 1), ToolTip = eng.Modules[i].Name, CornerRadius = new CornerRadius(4.5) };
                 pips[i] = b;
                 pr.Children.Add(b);
             }
             sp.Children.Add(pr);
 
             StackPanel sr = StatRow(scanNums);
-            sr.Margin = new Thickness(0, 28, 0, 0);
+            sr.Margin = new Thickness(0, 22, 0, 0);
             sp.Children.Add(sr);
 
             lastHit = TB("", 11, Th.Muted, false, "Consolas");
             lastHit.HorizontalAlignment = HorizontalAlignment.Center;
             lastHit.TextTrimming = TextTrimming.CharacterEllipsis;
-            lastHit.MaxWidth = 560;
+            lastHit.MaxWidth = 470;
             lastHit.Margin = new Thickness(0, 18, 0, 0);
             lastHit.RenderTransform = new TranslateTransform();
             sp.Children.Add(lastHit);
@@ -673,32 +860,32 @@ namespace Noxxer
 
         Grid BuildResult()
         {
-            Grid v = new Grid { Margin = new Thickness(52, 4, 52, 26) };
+            Grid v = new Grid { Margin = new Thickness(40, 2, 40, 20) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
-            resVerdict = TB("CLEAN", 40, Th.Ok, true, "Segoe UI Black");
+            resVerdict = TB("CLEAN", 36, Th.Ok, false, Th.Display);
             resVerdict.HorizontalAlignment = HorizontalAlignment.Center;
             resVerdict.RenderTransformOrigin = new Point(0.5, 0.5);
             resVerdict.RenderTransform = new ScaleTransform(1, 1);
             sp.Children.Add(resVerdict);
 
-            resSub = TB("", 12, Th.Muted);
+            resSub = TB("", 11.5, Th.Muted);
             resSub.HorizontalAlignment = HorizontalAlignment.Center;
             resSub.TextAlignment = TextAlignment.Center;
             resSub.TextWrapping = TextWrapping.Wrap;
             resSub.Margin = new Thickness(0, 8, 0, 0);
-            resSub.MaxWidth = 560;
+            resSub.MaxWidth = 470;
             sp.Children.Add(resSub);
 
             // divider
-            Border dv = new Border { Background = Th.Line, Height = 1, Width = 56, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 24, 0, 0) };
+            Border dv = new Border { Background = Th.Line, Height = 1, Width = 56, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 18, 0, 0) };
             sp.Children.Add(dv);
 
             StackPanel sr = StatRow(resNums);
-            sr.Margin = new Thickness(0, 24, 0, 0);
+            sr.Margin = new Thickness(0, 18, 0, 0);
             sp.Children.Add(sr);
 
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 32, 0, 0) };
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 24, 0, 0) };
             Button vf = Btn("VIEW FINDINGS", "Primary", delegate { BuildList(); Show(4); });
             vf.Margin = new Thickness(0, 0, 10, 0);
             Button ex = Btn("EXPORT", "Ghost", delegate { Export(); });
@@ -714,14 +901,14 @@ namespace Noxxer
 
         Grid BuildFindings()
         {
-            Grid v = new Grid { Margin = new Thickness(28, 24, 28, 24) };
+            Grid v = new Grid { Margin = new Thickness(24, 20, 24, 20) };
             v.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             v.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             v.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
             Grid top = new Grid { Margin = new Thickness(0, 0, 0, 18) };
             StackPanel left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            TextBlock logo = TB("FINDINGS", 20, Th.White, true, "Segoe UI Black");
+            TextBlock logo = TB("Findings", 20, Th.White, false, Th.Display);
             logo.VerticalAlignment = VerticalAlignment.Center;
             left.Children.Add(logo);
             findCount = TB("", 10, Th.Dim, false, "Consolas");
@@ -805,9 +992,20 @@ namespace Noxxer
                 Border box = pinBoxes != null && i < pinBoxes.Length ? pinBoxes[i] : null;
                 if (i < currentPin.Length)
                 {
+                    bool fresh = tb.Text != currentPin[i].ToString();
                     tb.Text = currentPin[i].ToString();
                     tb.Foreground = Th.White;
-                    if (box != null) box.BorderBrush = Th.White;
+                    if (box != null)
+                    {
+                        box.BorderBrush = Th.WhiteA(0.7);
+                        if (fresh)
+                        {
+                            Pop(box, i * 70);
+                            DoubleAnimation fa = Anim(0, 1, 300, true);
+                            fa.BeginTime = TimeSpan.FromMilliseconds(i * 70);
+                            tb.BeginAnimation(OpacityProperty, fa);
+                        }
+                    }
                 }
                 else
                 {
@@ -847,11 +1045,11 @@ namespace Noxxer
 
         Grid BuildPinAuth()
         {
-            Grid v = new Grid { Margin = new Thickness(52, 8, 52, 24) };
+            Grid v = new Grid { Margin = new Thickness(36, 4, 36, 20) };
             StackPanel root = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
             // Header label
-            TextBlock title = TB("SCAN AUTHORIZATION", 10.5, Th.Dim, true, "Segoe UI Semibold");
+            TextBlock title = TB("Scan authorization", 17, Th.White, false, Th.Display);
             title.HorizontalAlignment = HorizontalAlignment.Center;
             title.Margin = new Thickness(0, 0, 0, 8);
             root.Children.Add(title);
@@ -861,18 +1059,18 @@ namespace Noxxer
             pinBanner.TextAlignment = TextAlignment.Center;
             pinBanner.HorizontalAlignment = HorizontalAlignment.Center;
             pinBanner.TextWrapping = TextWrapping.Wrap;
-            pinBanner.Margin = new Thickness(0, 0, 0, 18);
+            pinBanner.Margin = new Thickness(0, 0, 0, 14);
             root.Children.Add(pinBanner);
 
             // PIN card container (solid panel)
-            Border card = new Border { Background = Th.PanelHi, BorderBrush = Th.LineSoft, BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(28, 26, 28, 20) };
+            Border card = new Border { Background = Th.PanelHi, BorderBrush = Th.LineSoft, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(22, 18, 22, 16) };
             StackPanel pinCard = new StackPanel();
             card.Child = pinCard;
 
             // Label
-            TextBlock pl = TB("YOUR PIN", 9.5, Th.Dim, true, "Segoe UI Semibold");
+            TextBlock pl = TB("your pin", 11, Th.Dim, false, Th.DisplayLt);
             pl.HorizontalAlignment = HorizontalAlignment.Center;
-            pl.Margin = new Thickness(0, 0, 0, 12);
+            pl.Margin = new Thickness(0, 0, 0, 10);
             pinCard.Children.Add(pl);
 
             // PIN grid (8 squares) — SOLID look, sharp
@@ -880,16 +1078,16 @@ namespace Noxxer
             int n = 8;
             pinDisplayChars = new TextBlock[n];
             pinBoxes = new Border[n];
-            double totalW = 420;
+            double totalW = 360;
             double boxW = (totalW - (n - 1) * 6) / n;
             pinGrid.HorizontalAlignment = HorizontalAlignment.Center;
             pinGrid.Width = totalW;
-            pinGrid.Height = 56;
+            pinGrid.Height = 46;
             for (int i = 0; i < n; i++)
             {
                 pinGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(boxW + 6) });
-                Border b = new Border { BorderBrush = Th.Line, BorderThickness = new Thickness(1), Background = Th.Panel, Width = boxW, Height = 56, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-                TextBlock tb = TB("", 20, Th.White, true, "Consolas");
+                Border b = new Border { BorderBrush = Th.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(7), Background = Th.Panel, Width = boxW, Height = 46, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center, RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(1, 1) };
+                TextBlock tb = TB("", 19, Th.White, false, Th.Display);
                 tb.HorizontalAlignment = HorizontalAlignment.Center;
                 tb.VerticalAlignment = VerticalAlignment.Center;
                 b.Child = tb;
@@ -907,9 +1105,9 @@ namespace Noxxer
 
             // Optional username field
             Grid optG = new Grid { Margin = new Thickness(0, 0, 0, 2) };
-            optG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
+            optG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
             optG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            TextBlock ul = TB("USERNAME", 9.5, Th.Dim, true, "Segoe UI Semibold");
+            TextBlock ul = TB("username", 11, Th.Dim, false, Th.DisplayLt);
             ul.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(ul, 0);
             optG.Children.Add(ul);
@@ -920,7 +1118,7 @@ namespace Noxxer
             pinCard.Children.Add(optG);
 
             TextBlock optHint = TB("Optional. Shown to the administrator on Discord for identification.", 9.5, Th.Dim);
-            optHint.Margin = new Thickness(130, 6, 0, 0);
+            optHint.Margin = new Thickness(96, 6, 0, 0);
             optHint.HorizontalAlignment = HorizontalAlignment.Stretch;
             optHint.TextWrapping = TextWrapping.Wrap;
             pinCard.Children.Add(optHint);
@@ -932,7 +1130,7 @@ namespace Noxxer
             pinStatus.TextAlignment = TextAlignment.Center;
             pinStatus.HorizontalAlignment = HorizontalAlignment.Center;
             pinStatus.TextWrapping = TextWrapping.Wrap;
-            pinStatus.Margin = new Thickness(0, 18, 0, 14);
+            pinStatus.Margin = new Thickness(0, 14, 0, 10);
             root.Children.Add(pinStatus);
 
             pinMsg = TB("", 10.5, Th.High, false, "Segoe UI Semibold");
@@ -966,7 +1164,7 @@ namespace Noxxer
 
             TextBlock foot = TB("Server: " + Auth.ServerUrl, 9.5, Th.Dim, false, "Consolas");
             foot.HorizontalAlignment = HorizontalAlignment.Center;
-            foot.Margin = new Thickness(0, 22, 0, 0);
+            foot.Margin = new Thickness(0, 14, 0, 0);
             root.Children.Add(foot);
 
             SetPinDisplay("");
@@ -1091,8 +1289,8 @@ namespace Noxxer
 
         void AddChip(StackPanel host, string text, int f)
         {
-            Border b = new Border { BorderBrush = Th.Line, BorderThickness = new Thickness(1), Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 6, 0), Cursor = Cursors.Hand, Tag = f, Background = Th.Black };
-            b.Child = TB(Spaced(text), 10.5, Th.Muted, true, null);
+            Border b = new Border { BorderBrush = Th.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(11), Padding = new Thickness(11, 4, 11, 4), Margin = new Thickness(0, 0, 6, 0), Cursor = Cursors.Hand, Tag = f, Background = Th.Black };
+            b.Child = TB(text.ToLowerInvariant(), 11, Th.Muted, false, Th.DisplayLt);
             b.MouseLeftButtonUp += delegate { filter = f; BuildList(); };
             b.MouseEnter += delegate { if ((int)b.Tag != filter) b.Background = Th.PanelHi; };
             b.MouseLeave += delegate { RestyleChips(); };
@@ -1137,7 +1335,7 @@ namespace Noxxer
         {
             Brush c = Th.ForSev(f.Sev);
             Grid g = new Grid();
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.Children.Add(new Border { Background = c });
 
@@ -1161,7 +1359,7 @@ namespace Noxxer
             Grid.SetColumn(sp, 1);
             g.Children.Add(sp);
 
-            Border row = new Border { Background = Th.Panel, Margin = new Thickness(0, 0, 8, 6), Child = g };
+            Border row = new Border { Background = Th.Panel, CornerRadius = new CornerRadius(8), ClipToBounds = true, Margin = new Thickness(0, 0, 8, 6), Child = g };
             row.MouseEnter += delegate { row.Background = Th.PanelHi; };
             row.MouseLeave += delegate { row.Background = Th.Panel; };
             if (i < 14)
@@ -1186,11 +1384,11 @@ namespace Noxxer
             Size sz;
             switch (v)
             {
-                case 0: sz = new Size(660, 500); break;
-                case 1: sz = new Size(660, 410); break;
-                case 4: sz = new Size(960, 610); break;
-                case 5: sz = new Size(660, 560); break;
-                default: sz = new Size(660, 500); break;
+                case 0: sz = new Size(560, 470); break;
+                case 1: sz = new Size(540, 360); break;
+                case 4: sz = new Size(860, 560); break;
+                case 5: sz = new Size(560, 520); break;
+                default: sz = new Size(560, 440); break;
             }
             cardWrap.BeginAnimation(WidthProperty, Anim(cardWrap.ActualWidth > 0 ? cardWrap.ActualWidth : cardWrap.Width, sz.Width, 520, true));
             cardWrap.BeginAnimation(HeightProperty, Anim(cardWrap.ActualHeight > 0 ? cardWrap.ActualHeight : cardWrap.Height, sz.Height, 520, true));
@@ -1252,14 +1450,16 @@ namespace Noxxer
             for (int i = 0; i < letters.Length; i++)
             {
                 DoubleAnimation fa = Anim(0, 1, 420, true);
-                fa.BeginTime = TimeSpan.FromMilliseconds(350 + i * 90);
+                fa.BeginTime = TimeSpan.FromMilliseconds(300 + i * 70);
                 TextBlock lt = letters[i];
                 fa.Completed += delegate { lt.BeginAnimation(OpacityProperty, null); lt.Opacity = 1; };
                 lt.BeginAnimation(OpacityProperty, fa);
-                DoubleAnimation ya = Anim(26, 0, 560, true);
+                DoubleAnimation ya = Anim(14, 0, 620, true);
                 ya.BeginTime = fa.BeginTime;
                 ((TranslateTransform)letters[i].RenderTransform).BeginAnimation(TranslateTransform.YProperty, ya);
             }
+            DoubleAnimation fl = new DoubleAnimation(-2.5, 2.5, TimeSpan.FromMilliseconds(3800)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever, EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }, BeginTime = TimeSpan.FromMilliseconds(1300) };
+            ((TranslateTransform)titlePanel.RenderTransform).BeginAnimation(TranslateTransform.YProperty, fl);
             Show(0);
         }
 
@@ -1384,11 +1584,11 @@ namespace Noxxer
         void Toast(string title, string msg, Brush accent)
         {
             Grid g = new Grid();
-            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(4) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3) });
             g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             g.Children.Add(new Border { Background = accent });
             StackPanel sp = new StackPanel { Margin = new Thickness(14, 10, 12, 11) };
-            TextBlock t = TB(title, 12.5, Th.White, true, null);
+            TextBlock t = TB(title, 12.5, Th.White, false, Th.Display);
             t.TextTrimming = TextTrimming.CharacterEllipsis;
             sp.Children.Add(t);
             TextBlock m = TB(msg, 11, Th.Muted);
@@ -1400,16 +1600,16 @@ namespace Noxxer
             Grid.SetColumn(sp, 1);
             g.Children.Add(sp);
 
-            TranslateTransform tt = new TranslateTransform(340, 0);
-            Border b = new Border { Background = Th.Panel, BorderBrush = Th.Line, BorderThickness = new Thickness(1), Margin = new Thickness(0, 0, 0, 8), Child = g, RenderTransform = tt, Opacity = 0 };
+            TranslateTransform tt = new TranslateTransform(300, 0);
+            Border b = new Border { Background = Th.Glass, BorderBrush = Th.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), ClipToBounds = true, Margin = new Thickness(0, 0, 0, 8), Child = g, RenderTransform = tt, Opacity = 0 };
             toastHost.Children.Insert(0, b);
             while (toastHost.Children.Count > 4) toastHost.Children.RemoveAt(toastHost.Children.Count - 1);
 
             DoubleAnimationUsingKeyFrames x = new DoubleAnimationUsingKeyFrames();
-            x.KeyFrames.Add(new EasingDoubleKeyFrame(340, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            x.KeyFrames.Add(new EasingDoubleKeyFrame(300, KeyTime.FromTimeSpan(TimeSpan.Zero)));
             x.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(380)), new QuarticEase { EasingMode = EasingMode.EaseOut }));
             x.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(4800))));
-            x.KeyFrames.Add(new EasingDoubleKeyFrame(340, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(5200)), new QuarticEase { EasingMode = EasingMode.EaseIn }));
+            x.KeyFrames.Add(new EasingDoubleKeyFrame(300, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(5200)), new QuarticEase { EasingMode = EasingMode.EaseIn }));
             x.Completed += delegate { toastHost.Children.Remove(b); };
             tt.BeginAnimation(TranslateTransform.XProperty, x);
 
