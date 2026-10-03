@@ -816,30 +816,22 @@ namespace Noxxer
             }
         }
 
-        void UpdatePinBanner(bool force = false)
+        // Tests the server connection on a worker thread; the UI thread must never wait on the network.
+        void CheckServer()
         {
             if (pinBanner == null) return;
-            AuthResult r = Auth.PingServer();
-            pinBanner.Text = r.Error ?? "";
-            pinBanner.Foreground = r.Ok ? Th.Ok : Th.High;
-            pinBanner.Cursor = Cursors.Hand;
-            if (!force)
-            {
-                pinBanner.ToolTip = "Haz click para volver a probar la conexión";
-                pinBanner.MouseLeftButtonUp -= BannerRetryClick;
-                pinBanner.MouseLeftButtonUp += BannerRetryClick;
-            }
-        }
-
-        void BannerRetryClick(object s, MouseButtonEventArgs e)
-        {
+            pinBanner.Text = "Comprobando conexión con el servidor...";
+            pinBanner.Foreground = Th.Muted;
+            pinBanner.Cursor = Cursors.Wait;
             ThreadPool.QueueUserWorkItem(delegate
             {
+                AuthResult r = Auth.PingServer();
                 Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    if (pinBanner != null) { pinBanner.Text = "Comprobando conexión..."; pinBanner.Foreground = Th.Muted; pinBanner.Cursor = Cursors.Wait; }
+                    pinBanner.Text = r.Error ?? "";
+                    pinBanner.Foreground = r.Ok ? Th.Ok : Th.High;
+                    pinBanner.Cursor = Cursors.Hand;
                 }));
-                Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(true); }));
             });
         }
 
@@ -989,7 +981,8 @@ namespace Noxxer
             root.Children.Add(foot);
 
             SetPinDisplay("");
-            ThreadPool.QueueUserWorkItem(delegate { Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(); })); });
+            pinBanner.ToolTip = "Haz click para volver a probar la conexión";
+            pinBanner.MouseLeftButtonUp += delegate { CheckServer(); };
             v.Children.Add(root);
             return v;
         }
@@ -1232,23 +1225,9 @@ namespace Noxxer
             if (v == 5)
             {
                 statusText.Text = "scan authorization required";
-                if (!Program.PreviewMode) RunConnectionDiagnostic();
+                if (!Program.PreviewMode) CheckServer();
             }
         }
-
-        void RunConnectionDiagnostic()
-        {
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                Dispatcher.BeginInvoke(new Action(delegate
-                {
-                    if (pinBanner != null) { pinBanner.Text = "Comprobando conexión con el servidor..."; pinBanner.Foreground = Th.Muted; pinBanner.Cursor = Cursors.Wait; }
-                }));
-                Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(true); }));
-            });
-        }
-
-
 
         void OnLoaded(object s, RoutedEventArgs e)
         {
