@@ -16,17 +16,20 @@ const LOGIN_MAX_ATTEMPTS = 8;                  // intentos fallidos por ventana
 function mountAdmin(app, db) {
   const { getSetting, setSetting, hashPassword, verifyPassword } = db;
 
-  // --- Semilla del admin desde el entorno (solo si no existe todavia) ---
+  // --- Credenciales del admin desde el entorno ---
+  // El .env manda: si defines ADMIN_USER y ADMIN_PASSWORD, esos son SIEMPRE
+  // tus datos de acceso al panel (se re-aplican en cada arranque). Asi evitamos
+  // confusiones si cambias la contraseña en el .env. Para gestionar la
+  // contraseña solo desde el panel, quita ADMIN_PASSWORD del .env tras el
+  // primer arranque.
   const envUser = (process.env.ADMIN_USER || '').trim();
   const envPass = process.env.ADMIN_PASSWORD || '';
-  if (!getSetting('admin_user')) {
-    if (envUser && envPass) {
-      setSetting('admin_user', envUser);
-      setSetting('admin_pass_hash', hashPassword(envPass));
-      console.log(`[admin] Cuenta de admin creada desde el entorno: "${envUser}"`);
-    } else {
-      console.warn('[admin] Admin no configurado. Define ADMIN_USER y ADMIN_PASSWORD en el .env y reinicia.');
-    }
+  if (envUser && envPass) {
+    setSetting('admin_user', envUser);
+    setSetting('admin_pass_hash', hashPassword(envPass));
+    console.log(`[admin] Credenciales de admin aplicadas desde el entorno: "${envUser}"`);
+  } else if (!getSetting('admin_user')) {
+    console.warn('[admin] Admin no configurado. Define ADMIN_USER y ADMIN_PASSWORD en el .env y reinicia.');
   }
 
   // --- Sesiones en memoria (se reinician al reiniciar el servidor) ---
