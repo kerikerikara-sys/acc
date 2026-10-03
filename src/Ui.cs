@@ -1,17 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
 using System.Windows.Threading;
 
 namespace Noxxer
@@ -32,19 +35,22 @@ namespace Noxxer
             b.Freeze();
             return b;
         }
-        public static readonly Brush Black = Frozen("#000000");
+        public static readonly Brush Black = Frozen("#0A0A0A");
         public static readonly Brush White = Frozen("#FFFFFF");
-        public static readonly Brush Panel = Frozen("#0C0C0C");
-        public static readonly Brush PanelHi = Frozen("#151515");
-        public static readonly Brush Line = Frozen("#2A2A2A");
+        public static readonly Brush Panel = Frozen("#121212");
+        public static readonly Brush PanelHi = Frozen("#1A1A1A");
+        public static readonly Brush Line = Frozen("#2E2E2E");
+        public static readonly Brush LineSoft = Frozen("#232323");
         public static readonly Brush Track = Frozen("#1C1C1C");
-        public static readonly Brush Dim = Frozen("#6F6F6F");
-        public static readonly Brush Muted = Frozen("#A6A6A6");
-        public static readonly Brush Soft = Frozen("#D0D0D0");
+        public static readonly Brush Dim = Frozen("#7A7A7A");
+        public static readonly Brush Muted = Frozen("#B4B4B4");
+        public static readonly Brush Soft = Frozen("#E2E2E2");
         public static readonly Brush High = Frozen("#FF3B3B");
         public static readonly Brush Med = Frozen("#FFB020");
         public static readonly Brush Low = Frozen("#5B9DFF");
         public static readonly Brush Ok = Frozen("#3DDC84");
+        public static readonly Brush Accent = Frozen("#FFFFFF");
+        public static readonly Brush Badge = Frozen("#FFFFFF");
 
         public static Brush ForSev(int sev)
         {
@@ -61,27 +67,38 @@ namespace Noxxer
         public const string Xaml = @"
 <ResourceDictionary xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
                     xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'>
+  <SolidColorBrush x:Key='BWhite' Color='#FFFFFF'/>
+  <SolidColorBrush x:Key='BBlack' Color='#0A0A0A'/>
+  <SolidColorBrush x:Key='BLine'  Color='#2E2E2E'/>
+  <SolidColorBrush x:Key='BGray'  Color='#8A8A8A'/>
+
+  <!-- Primary button: solid white, sharp corners -->
   <Style x:Key='Primary' TargetType='Button'>
-    <Setter Property='Foreground' Value='#000000'/>
+    <Setter Property='Foreground' Value='#0A0A0A'/>
     <Setter Property='Background' Value='#FFFFFF'/>
     <Setter Property='FontFamily' Value='Segoe UI Semibold'/>
     <Setter Property='FontSize' Value='13'/>
     <Setter Property='Cursor' Value='Hand'/>
-    <Setter Property='Padding' Value='30,12'/>
+    <Setter Property='Padding' Value='28,12'/>
     <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Button'>
-          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#FFFFFF' BorderThickness='2' Padding='{TemplateBinding Padding}'>
+          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#FFFFFF' BorderThickness='1' Padding='{TemplateBinding Padding}'>
             <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextBlock.Foreground='{TemplateBinding Foreground}'/>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property='IsMouseOver' Value='True'>
-              <Setter TargetName='B' Property='Background' Value='#000000'/>
-              <Setter Property='Foreground' Value='#FFFFFF'/>
+              <Setter TargetName='B' Property='Background' Value='#F0F0F0'/>
+              <Setter Property='Foreground' Value='#0A0A0A'/>
             </Trigger>
             <Trigger Property='IsPressed' Value='True'>
-              <Setter TargetName='B' Property='Background' Value='#333333'/>
+              <Setter TargetName='B' Property='Background' Value='#DCDCDC'/>
+            </Trigger>
+            <Trigger Property='IsEnabled' Value='False'>
+              <Setter TargetName='B' Property='Background' Value='#3A3A3A'/>
+              <Setter TargetName='B' Property='BorderBrush' Value='#3A3A3A'/>
+              <Setter Property='Foreground' Value='#7A7A7A'/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -89,28 +106,34 @@ namespace Noxxer
     </Setter>
   </Style>
 
+  <!-- Ghost button: outlined, solid borders -->
   <Style x:Key='Ghost' TargetType='Button'>
     <Setter Property='Foreground' Value='#FFFFFF'/>
-    <Setter Property='Background' Value='#000000'/>
+    <Setter Property='Background' Value='Transparent'/>
     <Setter Property='FontFamily' Value='Segoe UI Semibold'/>
     <Setter Property='FontSize' Value='12'/>
     <Setter Property='Cursor' Value='Hand'/>
-    <Setter Property='Padding' Value='22,10'/>
+    <Setter Property='Padding' Value='22,12'/>
     <Setter Property='FocusVisualStyle' Value='{x:Null}'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Button'>
-          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#3A3A3A' BorderThickness='2' Padding='{TemplateBinding Padding}'>
+          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#2E2E2E' BorderThickness='1' Padding='{TemplateBinding Padding}'>
             <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextBlock.Foreground='{TemplateBinding Foreground}'/>
           </Border>
           <ControlTemplate.Triggers>
             <Trigger Property='IsMouseOver' Value='True'>
               <Setter TargetName='B' Property='Background' Value='#FFFFFF'/>
               <Setter TargetName='B' Property='BorderBrush' Value='#FFFFFF'/>
-              <Setter Property='Foreground' Value='#000000'/>
+              <Setter Property='Foreground' Value='#0A0A0A'/>
             </Trigger>
             <Trigger Property='IsPressed' Value='True'>
-              <Setter TargetName='B' Property='Background' Value='#BBBBBB'/>
+              <Setter TargetName='B' Property='Background' Value='#E0E0E0'/>
+            </Trigger>
+            <Trigger Property='IsEnabled' Value='False'>
+              <Setter TargetName='B' Property='Background' Value='Transparent'/>
+              <Setter TargetName='B' Property='BorderBrush' Value='#262626'/>
+              <Setter Property='Foreground' Value='#5A5A5A'/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>
@@ -118,11 +141,12 @@ namespace Noxxer
     </Setter>
   </Style>
 
+  <!-- Window buttons (minimize, close) - clean, no hover bg on neutral -->
   <Style x:Key='WinBtn' TargetType='Button'>
     <Setter Property='Foreground' Value='#8A8A8A'/>
-    <Setter Property='Background' Value='#000000'/>
+    <Setter Property='Background' Value='Transparent'/>
     <Setter Property='FontFamily' Value='Segoe UI'/>
-    <Setter Property='FontSize' Value='13'/>
+    <Setter Property='FontSize' Value='12'/>
     <Setter Property='Width' Value='46'/>
     <Setter Property='Height' Value='32'/>
     <Setter Property='Cursor' Value='Hand'/>
@@ -162,6 +186,7 @@ namespace Noxxer
     </Setter>
   </Style>
 
+  <!-- Scrollbar - flat, solid -->
   <Style x:Key='ScrollThumb' TargetType='Thumb'>
     <Setter Property='Template'>
       <Setter.Value>
@@ -178,11 +203,11 @@ namespace Noxxer
   </Style>
 
   <Style TargetType='ScrollBar'>
-    <Setter Property='Width' Value='8'/>
+    <Setter Property='Width' Value='6'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='ScrollBar'>
-          <Grid Background='#0C0C0C'>
+          <Grid Background='#0A0A0A'>
             <Track x:Name='PART_Track' IsDirectionReversed='True'>
               <Track.Thumb>
                 <Thumb Style='{StaticResource ScrollThumb}'/>
@@ -196,237 +221,31 @@ namespace Noxxer
 </ResourceDictionary>";
     }
 
-    // ===================================================================== animated background
-    class AnimBg : FrameworkElement
+    // ===================================================================== solid background (clean, gradient-free)
+    class SolidBg : FrameworkElement
     {
-        class Sh { public double X, Y, Rot, Vr, Vy, Vx; public Geometry Geo; }
-
-        readonly List<Sh> shapes = new List<Sh>();
-        readonly Brush[] dots = new Brush[16];
-        readonly Brush[] bands = new Brush[14];
-        readonly Pen[] ringPens = new Pen[16];
-        readonly Pen shapePen;
-        readonly double[] sx = new double[16], sy = new double[16], sv = new double[16];
-        readonly Random rnd = new Random(11);
-        public double Energy;
-        public Point Mouse = new Point(-9999, -9999);
-        double e, t;
-        DateTime last = DateTime.Now;
-
-        static Geometry Poly(params Point[] p)
-        {
-            StreamGeometry g = new StreamGeometry();
-            using (StreamGeometryContext c = g.Open())
-            {
-                c.BeginFigure(p[0], false, true);
-                for (int i = 1; i < p.Length; i++) c.LineTo(p[i], true, false);
-            }
-            g.Freeze();
-            return g;
-        }
-
-        static Geometry MakeShape(int kind, double s)
-        {
-            double h = s / 2;
-            Geometry g;
-            switch (kind)
-            {
-                case 0: g = new RectangleGeometry(new Rect(-h, -h, s, s)); break;
-                case 1: g = Poly(new Point(0, -h), new Point(h, h), new Point(-h, h)); break;
-                case 2:
-                    GeometryGroup gg = new GeometryGroup();
-                    gg.Children.Add(new LineGeometry(new Point(-h, 0), new Point(h, 0)));
-                    gg.Children.Add(new LineGeometry(new Point(0, -h), new Point(0, h)));
-                    g = gg; break;
-                case 3:
-                    Point[] pts = new Point[6];
-                    for (int i = 0; i < 6; i++) pts[i] = new Point(Math.Cos(i * Math.PI / 3) * h, Math.Sin(i * Math.PI / 3) * h);
-                    g = Poly(pts); break;
-                default: g = new EllipseGeometry(new Point(0, 0), h, h); break;
-            }
-            if (g.CanFreeze) g.Freeze();
-            return g;
-        }
-
-        public AnimBg()
+        public SolidBg()
         {
             IsHitTestVisible = false;
-            for (int i = 0; i < 16; i++) dots[i] = Th.WhiteA(i / 15.0 * 0.95);
-            for (int i = 0; i < 14; i++) bands[i] = Th.WhiteA(0.16 * (1 - i / 14.0));
-            for (int i = 0; i < 16; i++)
-            {
-                Pen p = new Pen(Th.WhiteA(i / 15.0 * 0.32), 1.5);
-                p.Freeze();
-                ringPens[i] = p;
-            }
-            shapePen = new Pen(Th.WhiteA(0.17), 1);
-            shapePen.Freeze();
-            for (int i = 0; i < 24; i++)
-            {
-                Sh s = new Sh();
-                s.X = rnd.NextDouble(); s.Y = rnd.NextDouble();
-                s.Rot = rnd.NextDouble() * 360;
-                s.Vr = (rnd.NextDouble() - 0.5) * 40;
-                s.Vy = -(0.008 + rnd.NextDouble() * 0.022);
-                s.Vx = (rnd.NextDouble() - 0.5) * 0.006;
-                s.Geo = MakeShape(rnd.Next(5), 14 + rnd.NextDouble() * 46);
-                shapes.Add(s);
-            }
-            for (int i = 0; i < sx.Length; i++)
-            {
-                sx[i] = rnd.NextDouble(); sy[i] = rnd.NextDouble();
-                sv[i] = 0.06 + rnd.NextDouble() * 0.16;
-            }
-            Loaded += delegate { CompositionTarget.Rendering += OnFrame; };
-            Unloaded += delegate { CompositionTarget.Rendering -= OnFrame; };
-        }
-
-        void OnFrame(object sender, EventArgs a)
-        {
-            DateTime now = DateTime.Now;
-            double dt = Math.Min(0.1, (now - last).TotalSeconds);
-            last = now;
-            e += (Energy - e) * Math.Min(1, dt * 2.5);
-            double k = 1 + e * 1.8;
-            t += dt * k;
-            foreach (Sh s in shapes)
-            {
-                s.Y += s.Vy * dt * k; s.X += s.Vx * dt * k; s.Rot += s.Vr * dt * k;
-                if (s.Y < -0.12) { s.Y = 1.12; s.X = rnd.NextDouble(); }
-                if (s.X < -0.1) s.X = 1.1;
-                if (s.X > 1.1) s.X = -0.1;
-            }
-            for (int i = 0; i < sx.Length; i++)
-            {
-                sy[i] += sv[i] * dt * k;
-                if (sy[i] > 1.1) { sy[i] = -0.1; sx[i] = rnd.NextDouble(); }
-            }
-            InvalidateVisual();
+            Loaded += delegate { InvalidateVisual(); };
         }
 
         protected override void OnRender(DrawingContext dc)
         {
             double W = ActualWidth, H = ActualHeight;
-            if (W < 10 || H < 10) return;
+            if (W < 1 || H < 1) return;
+
+            // Solid black base
             dc.DrawRectangle(Th.Black, null, new Rect(0, 0, W, H));
-            double cx = W / 2, cy = H / 2 + 20;
 
-            // pulsing dot grid: radial wave + diagonal sweep + cursor glow
-            for (double x = 18; x < W; x += 36)
-            {
-                for (double y = 18; y < H; y += 36)
-                {
-                    double dx = x - cx, dy = y - cy;
-                    double dist = Math.Sqrt(dx * dx + dy * dy);
-                    double w = Math.Sin(dist * 0.017 - t * 1.5);
-                    w = w > 0 ? Math.Pow(w, 8) : 0;
-                    double w2 = Math.Sin(x * 0.011 + y * 0.007 - t * 0.9);
-                    w2 = w2 > 0 ? Math.Pow(w2, 12) : 0;
-                    double mx = x - Mouse.X, my = y - Mouse.Y;
-                    double md = Math.Sqrt(mx * mx + my * my);
-                    double m = md < 150 ? 1 - md / 150 : 0;
-                    double a = 0.10 + 0.5 * w * (0.55 + e * 0.45) + 0.3 * w2 + 0.85 * m * m;
-                    int q = (int)(Math.Min(1, a) * 15);
-                    double r = 1.0 + 1.5 * Math.Min(1, w + m);
-                    dc.DrawEllipse(dots[q], null, new Point(x, y), r, r);
-                }
-            }
+            // Subtle dark vignette top / bottom (solid color bands)
+            dc.DrawRectangle(Th.Frozen("#0F0F0F"), null, new Rect(0, 0, W, Math.Min(200, H * 0.35)));
 
-            // falling data streams
-            for (int i = 0; i < sx.Length; i++)
-            {
-                double x = Math.Floor(sx[i] * W / 36) * 36 + 18, y = sy[i] * H;
-                dc.DrawRectangle(dots[7], null, new Rect(x - 1, y, 2, 16));
-                dc.DrawRectangle(dots[4], null, new Rect(x - 1, y - 20, 2, 16));
-                dc.DrawRectangle(dots[2], null, new Rect(x - 1, y - 40, 2, 16));
-                dc.DrawRectangle(dots[1], null, new Rect(x - 1, y - 60, 2, 16));
-            }
-
-            // drifting outline shapes
-            foreach (Sh s in shapes)
-            {
-                dc.PushTransform(new TranslateTransform(s.X * W, s.Y * H));
-                dc.PushTransform(new RotateTransform(s.Rot));
-                dc.DrawGeometry(null, shapePen, s.Geo);
-                dc.Pop();
-                dc.Pop();
-            }
-
-            // shockwave rings from the centre
-            for (int n = 0; n < 2; n++)
-            {
-                double f = ((t * 0.28 + n * 0.5) % 1.0);
-                double r = f * Math.Max(W, H) * 0.75;
-                int q = (int)((1 - f) * 15);
-                dc.DrawEllipse(null, ringPens[Math.Max(0, Math.Min(15, q))], new Point(cx, cy), r, r);
-            }
-
-            // scan line with trailing bands
-            double sy0 = ((t * 85) % (H + 320)) - 160;
-            for (int i = 0; i < bands.Length; i++)
-                dc.DrawRectangle(bands[i], null, new Rect(0, sy0 - i * 3, W, 3));
-            dc.DrawRectangle(dots[6], null, new Rect(0, sy0, W, 1));
-        }
-    }
-
-    // ===================================================================== card border runner
-    class BorderRunner : FrameworkElement
-    {
-        readonly Pen[] pens = new Pen[20];
-        public double Speed = 0.05, TargetSpeed = 0.05;
-        double pos;
-        DateTime last = DateTime.Now;
-
-        public BorderRunner()
-        {
-            IsHitTestVisible = false;
-            for (int i = 0; i < pens.Length; i++)
-            {
-                Pen p = new Pen(Th.WhiteA(Math.Pow(1 - i / (double)pens.Length, 1.7)), 3);
-                p.Freeze();
-                pens[i] = p;
-            }
-            Loaded += delegate { CompositionTarget.Rendering += OnFrame; };
-            Unloaded += delegate { CompositionTarget.Rendering -= OnFrame; };
-        }
-
-        void OnFrame(object s, EventArgs a)
-        {
-            DateTime now = DateTime.Now;
-            double dt = Math.Min(0.1, (now - last).TotalSeconds);
-            last = now;
-            Speed += (TargetSpeed - Speed) * Math.Min(1, dt * 3);
-            pos = (pos + Speed * dt) % 1.0;
-            InvalidateVisual();
-        }
-
-        static Point At(double d, double W, double H)
-        {
-            double P = 2 * (W + H);
-            d = ((d % P) + P) % P;
-            if (d < W) return new Point(d, 0);
-            d -= W;
-            if (d < H) return new Point(W, d);
-            d -= H;
-            if (d < W) return new Point(W - d, H);
-            d -= W;
-            return new Point(0, H - d);
-        }
-
-        protected override void OnRender(DrawingContext dc)
-        {
-            double W = ActualWidth - 2, H = ActualHeight - 2;
-            if (W < 20 || H < 20) return;
-            dc.PushTransform(new TranslateTransform(1, 1));
-            double P = 2 * (W + H);
-            const double seg = 12;
-            for (int run = 0; run < 2; run++)
-            {
-                double head = (pos + run * 0.5) * P;
-                for (int k = 0; k < pens.Length; k++)
-                    dc.DrawLine(pens[k], At(head - k * seg, W, H), At(head - (k + 1) * seg, W, H));
-            }
-            dc.Pop();
+            // Single 1px horizontal hairline for structure (pure white, low alpha)
+            double y = H * 0.62;
+            Pen p = new Pen(Th.WhiteA(0.04), 1);
+            p.Freeze();
+            dc.DrawLine(p, new Point(0, y), new Point(W, y));
         }
     }
 
@@ -434,8 +253,7 @@ namespace Noxxer
     class MainWindow : Window
     {
         readonly Engine eng = new Engine();
-        AnimBg bg;
-        BorderRunner runner;
+        SolidBg bg;
         Grid cardWrap;
         StackPanel header;
         Grid[] views = new Grid[6];
@@ -456,11 +274,17 @@ namespace Noxxer
         Button stopBtn;
 
         AuthSession session;
-        int loginTab;
-        TextBox loginUser, loginPass, loginKey, regUser, regPass, regPass2, regKey;
-        TextBlock loginMsg, regMsg, loginBanner;
-        Border loginTabBtn, regTabBtn;
-        UIElement loginPanelUi, regPanelUi;
+        PinSession pinSession;
+        CancellationTokenSource pinCancellation;
+
+        TextBox pinOptionalUser;
+        TextBlock[] pinDisplayChars;
+        TextBlock pinMsg, pinStatus, pinBanner;
+        Button pinRequestBtn, pinCancelBtn;
+        Border[] pinBoxes;
+        string currentPin;
+        bool pinWaiting;
+        object pinLock = new object();
 
         double shownProg, dHigh, dMed, dLow, dFiles, shimmerX = -80, sweepX, dotPhase;
         DateTime lastFrame = DateTime.Now, lastToast = DateTime.MinValue;
@@ -468,7 +292,6 @@ namespace Noxxer
         bool consented;
         System.Windows.Forms.NotifyIcon notify;
         readonly Random rnd = new Random();
-        DateTime nextGlitch = DateTime.Now.AddSeconds(4);
 
         // ---------------------------------------------------------- helpers
         static string Spaced(string s)
@@ -553,18 +376,16 @@ namespace Noxxer
             catch { }
 
             Grid root = new Grid();
-            bg = new AnimBg();
+            bg = new SolidBg();
             root.Children.Add(bg);
             root.Children.Add(BuildCard());
             root.Children.Add(BuildTitleBar());
             toastHost = new StackPanel { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 52, 16, 0), Width = 320 };
             root.Children.Add(toastHost);
 
-            Border frame = new Border { BorderBrush = Th.Line, BorderThickness = new Thickness(1), Child = root };
+            Border frame = new Border { BorderBrush = Th.LineSoft, BorderThickness = new Thickness(1), Child = root };
             Content = frame;
 
-            MouseMove += delegate(object s, MouseEventArgs e) { bg.Mouse = e.GetPosition(bg); };
-            MouseLeave += delegate { bg.Mouse = new Point(-9999, -9999); };
             Closing += delegate { eng.Stop(); };
             Closed += delegate { if (notify != null) { notify.Visible = false; notify.Dispose(); } };
             Loaded += OnLoaded;
@@ -577,18 +398,34 @@ namespace Noxxer
 
         UIElement BuildTitleBar()
         {
-            Grid bar = new Grid { Height = 34, VerticalAlignment = VerticalAlignment.Top, Background = Brushes.Transparent };
+            Grid bar = new Grid { Height = 36, VerticalAlignment = VerticalAlignment.Top, Background = Th.Black };
             bar.MouseLeftButtonDown += delegate(object s, MouseButtonEventArgs e) { try { DragMove(); } catch { } };
-            TextBlock l = TB(Spaced("NOXXER") + "   ·   v1.0", 10.5, Th.Dim);
-            l.Margin = new Thickness(16, 0, 0, 0);
+
+            Grid left = new Grid { Margin = new Thickness(16, 0, 0, 0), HorizontalAlignment = HorizontalAlignment.Left };
+            left.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            left.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            Border logo = new Border { Background = Th.White, Width = 22, Height = 22, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+            logo.Child = TB("N", 13, Th.Black, true, "Segoe UI Black");
+            ((TextBlock)logo.Child).HorizontalAlignment = HorizontalAlignment.Center;
+            ((TextBlock)logo.Child).VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(logo, 0);
+            left.Children.Add(logo);
+
+            TextBlock l = TB("NOXXER" + "   ·   v1.0", 10.5, Th.Muted);
             l.VerticalAlignment = VerticalAlignment.Center;
-            bar.Children.Add(l);
+            l.FontFamily = new FontFamily("Segoe UI Semibold");
+            Grid.SetColumn(l, 1);
+            left.Children.Add(l);
+
+            bar.Children.Add(left);
 
             StackPanel r = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-            TextBlock adm = TB(Spaced(eng.Admin ? "ELEVATED" : "LIMITED"), 9.5, eng.Admin ? Th.Ok : Th.Med, true, null);
+            string mode = Program.PreviewMode ? "PREVIEW" : eng.Admin ? "ELEVATED" : "LIMITED";
+            TextBlock adm = TB(mode, 9.5, Program.PreviewMode ? Th.White : eng.Admin ? Th.Ok : Th.Med, true, "Segoe UI Semibold");
             adm.VerticalAlignment = VerticalAlignment.Center;
             adm.Margin = new Thickness(0, 0, 14, 0);
-            adm.ToolTip = eng.Admin ? "Running as administrator: full coverage." : "Not elevated: Prefetch, BAM and event-log checks are skipped.";
+            adm.ToolTip = Program.PreviewMode ? "UI preview only. Scanning is disabled." : eng.Admin ? "Running as administrator: full coverage." : "Not elevated: Prefetch, BAM and event-log checks are skipped.";
             r.Children.Add(adm);
             r.Children.Add(Btn("–", "WinBtn", delegate { WindowState = WindowState.Minimized; }));
             r.Children.Add(Btn("✕", "WinClose", delegate { Close(); }));
@@ -598,11 +435,11 @@ namespace Noxxer
 
         UIElement BuildCard()
         {
-            cardWrap = new Grid { Width = 660, Height = 500, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 34, 0, 0), RenderTransformOrigin = new Point(0.5, 0.5) };
+            cardWrap = new Grid { Width = 680, Height = 520, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 34, 0, 0), RenderTransformOrigin = new Point(0.5, 0.5) };
             cardWrap.RenderTransform = new ScaleTransform(0.9, 0.9);
             cardWrap.Opacity = 0;
 
-            Border card = new Border { Background = Th.Black, BorderBrush = Th.White, BorderThickness = new Thickness(2) };
+            Border card = new Border { Background = Th.Panel, BorderBrush = Th.Line, BorderThickness = new Thickness(1) };
             Grid g = new Grid();
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -632,114 +469,169 @@ namespace Noxxer
             views[5].Visibility = Visibility.Collapsed;
             g.Children.Add(views[5]);
 
-            runner = new BorderRunner();
             cardWrap.Children.Add(card);
-            cardWrap.Children.Add(runner);
             return cardWrap;
         }
 
         StackPanel BuildHeader()
         {
-            StackPanel h = new StackPanel { Margin = new Thickness(0, 28, 0, 0) };
+            StackPanel h = new StackPanel { Margin = new Thickness(0, 30, 0, 0) };
 
             StackPanel title = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-            Border chip = new Border { Background = Th.White, Padding = new Thickness(8, 1, 8, 2), Margin = new Thickness(0, 0, 16, 0), VerticalAlignment = VerticalAlignment.Center };
-            chip.Child = TB("AC", 17, Th.Black, true, "Segoe UI Black");
-            title.Children.Add(chip);
             string word = "NOXXER";
             letters = new TextBlock[word.Length];
             for (int i = 0; i < word.Length; i++)
             {
-                TextBlock t = TB(word[i].ToString(), 50, Th.White, false, "Segoe UI Black");
-                t.Margin = new Thickness(2, 0, 2, 0);
-                t.RenderTransform = new TranslateTransform(0, 26);
+                TextBlock t = TB(word[i].ToString(), 44, Th.White, false, "Segoe UI Black");
+                t.Margin = new Thickness(1, 0, 1, 0);
+                t.RenderTransform = new TranslateTransform(0, 20);
                 t.Opacity = 0;
                 letters[i] = t;
                 title.Children.Add(t);
             }
             h.Children.Add(title);
 
-            Grid pr = new Grid { Margin = new Thickness(44, 16, 44, 6) };
-            pr.Children.Add(TB(Spaced("PROGRESS"), 9.5, Th.Dim));
+            // Divider solid 1px
+            Border div = new Border { Background = Th.LineSoft, Height = 1, Margin = new Thickness(48, 20, 48, 0), HorizontalAlignment = HorizontalAlignment.Stretch };
+            h.Children.Add(div);
+
+            Grid pr = new Grid { Margin = new Thickness(44, 16, 44, 4) };
+            pr.Children.Add(TB("PROGRESS", 9.5, Th.Dim, true, "Segoe UI Semibold"));
             pctText = TB("0%", 10, Th.Muted, false, "Consolas");
             pctText.HorizontalAlignment = HorizontalAlignment.Right;
             pr.Children.Add(pctText);
             h.Children.Add(pr);
 
-            trackHost = new Grid { Height = 4, Margin = new Thickness(44, 0, 44, 0), ClipToBounds = true };
+            trackHost = new Grid { Height = 3, Margin = new Thickness(44, 0, 44, 0), ClipToBounds = true };
             track = new Border { Background = Th.Track };
             trackHost.Children.Add(track);
-            idleSweep = new System.Windows.Shapes.Rectangle { Width = 90, Fill = Th.Frozen("#4A4A4A"), HorizontalAlignment = HorizontalAlignment.Left, RenderTransform = new TranslateTransform() };
+            idleSweep = new System.Windows.Shapes.Rectangle { Width = 80, Fill = Th.Frozen("#4A4A4A"), HorizontalAlignment = HorizontalAlignment.Left, RenderTransform = new TranslateTransform() };
             trackHost.Children.Add(idleSweep);
             fill = new Border { Background = Th.White, HorizontalAlignment = HorizontalAlignment.Left, Width = 0, ClipToBounds = true };
             Canvas c = new Canvas();
-            shimmer = new System.Windows.Shapes.Rectangle { Width = 60, Height = 4, Fill = Th.Frozen("#8C8C8C") };
+            shimmer = new System.Windows.Shapes.Rectangle { Width = 60, Height = 3, Fill = Th.Frozen("#BFBFBF") };
             c.Children.Add(shimmer);
             fill.Child = c;
             trackHost.Children.Add(fill);
             h.Children.Add(trackHost);
 
-            statusText = TB("ready", 15, Th.White, false, "Segoe UI");
+            statusText = TB("ready", 13, Th.White, false, "Segoe UI Semibold");
             statusText.HorizontalAlignment = HorizontalAlignment.Center;
-            statusText.Margin = new Thickness(0, 16, 0, 0);
+            statusText.Margin = new Thickness(0, 14, 0, 0);
             h.Children.Add(statusText);
             return h;
         }
 
         Grid BuildConsent()
         {
-            Grid v = new Grid { Margin = new Thickness(44, 18, 44, 30) };
+            Grid v = new Grid { Margin = new Thickness(52, 10, 52, 30) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            TextBlock t1 = TB(Spaced("BEFORE YOU START"), 11, Th.White, true, null);
+
+            TextBlock t1 = TB("TERMS & PRIVACY", 11, Th.White, true, "Segoe UI Semibold");
             t1.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(t1);
-            TextBlock t2 = TB("AC Noxxer scans THIS PC for traces of FiveM cheats, DMA hardware and related browser or Discord activity.\n\n" +
-                "Everything runs locally. Nothing is uploaded or sent anywhere. Results stay in this window and in a report only if you export one.\n\n" +
-                "Only run it on your own PC, or on a PC whose owner has agreed to the check.", 12.5, Th.Muted);
+
+            // divider
+            Border d = new Border { Background = Th.Line, Height = 1, Width = 48, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 18) };
+            sp.Children.Add(d);
+
+            TextBlock t2 = TB("By selecting Accept, you agree to the Terms of Service and Privacy Policy. The scan checks this PC for cheat, DMA, driver, process, file, browser, Discord and FiveM indicators. It also reads executable private memory in FiveM/GTA processes when available.\n\n" +
+                "Sign-in sends your account credentials, license key and a device identifier to the configured server. After a scan, its findings are also submitted there; findings can include process names, file paths and matched text.\n\n" +
+                "Continue only on a device you own or are authorized to inspect.", 12, Th.Muted);
             t2.TextWrapping = TextWrapping.Wrap;
             t2.TextAlignment = TextAlignment.Center;
-            t2.Margin = new Thickness(0, 14, 0, 0);
-            t2.LineHeight = 19;
+            t2.Margin = new Thickness(0, 0, 0, 0);
+            t2.LineHeight = 20;
             sp.Children.Add(t2);
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 26, 0, 0) };
-            Button ok = Btn("I AGREE", "Primary", delegate { consented = true; Show(1); Toast("Ready", "Consent recorded. Press START SCAN.", Th.Ok); });
-            ok.Margin = new Thickness(0, 0, 12, 0);
+
+            TextBlock links = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0), Foreground = Th.Dim, FontSize = 11 };
+            Hyperlink terms = new Hyperlink(new Run("anticheat.ac/tos")) { NavigateUri = new Uri("https://anticheat.ac/tos"), Foreground = Th.Muted };
+            terms.RequestNavigate += OpenPolicyLink;
+            Hyperlink privacy = new Hyperlink(new Run("anticheat.ac/privacy")) { NavigateUri = new Uri("https://anticheat.ac/privacy"), Foreground = Th.Muted };
+            privacy.RequestNavigate += OpenPolicyLink;
+            links.Inlines.Add(terms);
+            links.Inlines.Add(new Run("        "));
+            links.Inlines.Add(privacy);
+            sp.Children.Add(links);
+
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 30, 0, 0) };
+            Button ok = Btn("ACCEPT", "Primary", delegate
+            {
+                consented = true;
+                if (Program.PreviewMode) Show(1);
+                else Show(5);
+            });
+            ok.Margin = new Thickness(0, 0, 10, 0);
+            ok.Padding = new Thickness(48, 12, 48, 12);
             row.Children.Add(ok);
-            row.Children.Add(Btn("EXIT", "Ghost", delegate { Close(); }));
+            row.Children.Add(Btn("DECLINE", "Ghost", delegate { Close(); }));
             sp.Children.Add(row);
             v.Children.Add(sp);
             return v;
         }
 
+        void OpenPolicyLink(object sender, RequestNavigateEventArgs e)
+        {
+            try { Process.Start(e.Uri.AbsoluteUri); } catch { }
+            e.Handled = true;
+        }
+
         Grid BuildIdle()
         {
-            Grid v = new Grid { Margin = new Thickness(44, 10, 44, 24) };
+            Grid v = new Grid { Margin = new Thickness(52, 6, 52, 28) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            TextBlock d = TB("Processes, drivers, DMA hardware, traces, files, browsers, Discord and FiveM will be checked.", 12.5, Th.Muted);
+
+            // Solid status bar (dot + text)
+            Grid bar = new Grid { Margin = new Thickness(0, 0, 0, 28), HorizontalAlignment = HorizontalAlignment.Center };
+            bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Border dot = new Border { Background = Th.Ok, Width = 8, Height = 8, CornerRadius = new CornerRadius(4), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
+            Grid.SetColumn(dot, 0);
+            bar.Children.Add(dot);
+            TextBlock st = TB("AUTHORIZED", 10, Th.Ok, true, "Segoe UI Semibold");
+            st.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(st, 1);
+            bar.Children.Add(st);
+            sp.Children.Add(bar);
+
+            TextBlock title = TB("Ready to scan", 28, Th.White, true, "Segoe UI Semibold");
+            title.HorizontalAlignment = HorizontalAlignment.Center;
+            sp.Children.Add(title);
+
+            TextBlock d = TB("Memory integrity, active connections, game memory, processes, drivers, DMA hardware, traces, files, browsers, Discord and FiveM will be checked.", 12, Th.Muted);
             d.TextWrapping = TextWrapping.Wrap;
             d.TextAlignment = TextAlignment.Center;
+            d.Margin = new Thickness(0, 10, 0, 0);
+            d.MaxWidth = 520;
+            d.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(d);
+
             Button start = Btn("START SCAN", "Primary", delegate { StartScan(); });
             start.HorizontalAlignment = HorizontalAlignment.Center;
-            start.Margin = new Thickness(0, 22, 0, 0);
+            start.Margin = new Thickness(0, 32, 0, 0);
             start.FontSize = 14;
-            start.Padding = new Thickness(46, 14, 46, 14);
+            start.Padding = new Thickness(64, 16, 64, 16);
+            start.IsEnabled = !Program.PreviewMode;
             sp.Children.Add(start);
-            TextBlock f = TB(Rules.All.Count + " signatures loaded   ·   " + (eng.Admin ? "full coverage" : "run as administrator for full coverage"), 10.5, Th.Dim, false, "Consolas");
+
+            TextBlock f = TB(Rules.All.Count + " signatures loaded   ·   " + (eng.Admin ? "full coverage" : "run as administrator for full coverage"), 10, Th.Dim, false, "Consolas");
             f.HorizontalAlignment = HorizontalAlignment.Center;
-            f.Margin = new Thickness(0, 16, 0, 0);
+            f.Margin = new Thickness(0, 22, 0, 0);
             sp.Children.Add(f);
+
             v.Children.Add(sp);
             return v;
         }
 
         Grid BuildScan()
         {
-            Grid v = new Grid { Margin = new Thickness(44, 8, 44, 22) };
+            Grid v = new Grid { Margin = new Thickness(52, 6, 52, 22) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            moduleText = TB("", 12, Th.White, true, null);
+
+            moduleText = TB("", 11, Th.White, true, "Segoe UI Semibold");
             moduleText.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(moduleText);
+
             activityText = TB("", 10.5, Th.Dim, false, "Consolas");
             activityText.HorizontalAlignment = HorizontalAlignment.Center;
             activityText.TextTrimming = TextTrimming.CharacterEllipsis;
@@ -748,54 +640,65 @@ namespace Noxxer
             sp.Children.Add(activityText);
 
             pips = new Border[eng.Modules.Count];
-            StackPanel pr = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 18, 0, 0) };
+            StackPanel pr = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0) };
             for (int i = 0; i < pips.Length; i++)
             {
-                Border b = new Border { Width = 18, Height = 18, Margin = new Thickness(4, 0, 4, 0), Background = Th.Track, BorderBrush = Th.Line, BorderThickness = new Thickness(1), RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(1, 1), ToolTip = eng.Modules[i].Name };
+                Border b = new Border { Width = 14, Height = 14, Margin = new Thickness(3, 0, 3, 0), Background = Th.Track, BorderBrush = Th.LineSoft, BorderThickness = new Thickness(1), RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = new ScaleTransform(1, 1), ToolTip = eng.Modules[i].Name, CornerRadius = new CornerRadius(1) };
                 pips[i] = b;
                 pr.Children.Add(b);
             }
             sp.Children.Add(pr);
 
             StackPanel sr = StatRow(scanNums);
-            sr.Margin = new Thickness(0, 20, 0, 0);
+            sr.Margin = new Thickness(0, 28, 0, 0);
             sp.Children.Add(sr);
 
             lastHit = TB("", 11, Th.Muted, false, "Consolas");
             lastHit.HorizontalAlignment = HorizontalAlignment.Center;
             lastHit.TextTrimming = TextTrimming.CharacterEllipsis;
             lastHit.MaxWidth = 560;
-            lastHit.Margin = new Thickness(0, 14, 0, 0);
+            lastHit.Margin = new Thickness(0, 18, 0, 0);
             lastHit.RenderTransform = new TranslateTransform();
             sp.Children.Add(lastHit);
 
             stopBtn = Btn("STOP", "Ghost", delegate { eng.Stop(); statusText.Text = "stopping"; });
             stopBtn.HorizontalAlignment = HorizontalAlignment.Center;
-            stopBtn.Margin = new Thickness(0, 16, 0, 0);
+            stopBtn.Margin = new Thickness(0, 22, 0, 0);
+            stopBtn.Padding = new Thickness(32, 10, 32, 10);
             sp.Children.Add(stopBtn);
+
             v.Children.Add(sp);
             return v;
         }
 
         Grid BuildResult()
         {
-            Grid v = new Grid { Margin = new Thickness(44, 6, 44, 24) };
+            Grid v = new Grid { Margin = new Thickness(52, 4, 52, 26) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            resVerdict = TB("CLEAN", 44, Th.Ok, true, "Segoe UI Black");
+
+            resVerdict = TB("CLEAN", 40, Th.Ok, true, "Segoe UI Black");
             resVerdict.HorizontalAlignment = HorizontalAlignment.Center;
             resVerdict.RenderTransformOrigin = new Point(0.5, 0.5);
             resVerdict.RenderTransform = new ScaleTransform(1, 1);
             sp.Children.Add(resVerdict);
+
             resSub = TB("", 12, Th.Muted);
             resSub.HorizontalAlignment = HorizontalAlignment.Center;
             resSub.TextAlignment = TextAlignment.Center;
             resSub.TextWrapping = TextWrapping.Wrap;
-            resSub.Margin = new Thickness(0, 4, 0, 0);
+            resSub.Margin = new Thickness(0, 8, 0, 0);
+            resSub.MaxWidth = 560;
             sp.Children.Add(resSub);
+
+            // divider
+            Border dv = new Border { Background = Th.Line, Height = 1, Width = 56, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 24, 0, 0) };
+            sp.Children.Add(dv);
+
             StackPanel sr = StatRow(resNums);
-            sr.Margin = new Thickness(0, 20, 0, 0);
+            sr.Margin = new Thickness(0, 24, 0, 0);
             sp.Children.Add(sr);
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 24, 0, 0) };
+
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 32, 0, 0) };
             Button vf = Btn("VIEW FINDINGS", "Primary", delegate { BuildList(); Show(4); });
             vf.Margin = new Thickness(0, 0, 10, 0);
             Button ex = Btn("EXPORT", "Ghost", delegate { Export(); });
@@ -804,20 +707,24 @@ namespace Noxxer
             row.Children.Add(ex);
             row.Children.Add(Btn("SCAN AGAIN", "Ghost", delegate { StartScan(); }));
             sp.Children.Add(row);
+
             v.Children.Add(sp);
             return v;
         }
 
         Grid BuildFindings()
         {
-            Grid v = new Grid { Margin = new Thickness(26, 22, 26, 22) };
+            Grid v = new Grid { Margin = new Thickness(28, 24, 28, 24) };
+            v.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             v.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             v.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            Grid top = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+            Grid top = new Grid { Margin = new Thickness(0, 0, 0, 18) };
             StackPanel left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            left.Children.Add(TB("NOXXER", 22, Th.White, false, "Segoe UI Black"));
-            findCount = TB("", 11, Th.Dim, false, "Consolas");
+            TextBlock logo = TB("FINDINGS", 20, Th.White, true, "Segoe UI Black");
+            logo.VerticalAlignment = VerticalAlignment.Center;
+            left.Children.Add(logo);
+            findCount = TB("", 10, Th.Dim, false, "Consolas");
             findCount.VerticalAlignment = VerticalAlignment.Center;
             findCount.Margin = new Thickness(14, 4, 0, 0);
             left.Children.Add(findCount);
@@ -829,21 +736,25 @@ namespace Noxxer
             AddChip(right, "MEDIUM", 2);
             AddChip(right, "LOW", 1);
             Button exp = Btn("EXPORT", "Ghost", delegate { Export(); });
-            exp.Padding = new Thickness(16, 6, 16, 6);
-            exp.Margin = new Thickness(14, 0, 8, 0);
+            exp.Padding = new Thickness(20, 7, 20, 7);
+            exp.Margin = new Thickness(14, 0, 10, 0);
             right.Children.Add(exp);
             Button back = Btn("BACK", "Primary", delegate { Show(3); });
-            back.Padding = new Thickness(20, 6, 20, 6);
+            back.Padding = new Thickness(24, 7, 24, 7);
             back.FontSize = 12;
             right.Children.Add(back);
             top.Children.Add(right);
             Grid.SetRow(top, 0);
             v.Children.Add(top);
 
+            Border hd = new Border { Background = Th.LineSoft, Height = 1, Margin = new Thickness(0, 0, 0, 18) };
+            Grid.SetRow(hd, 1);
+            v.Children.Add(hd);
+
             ScrollViewer sv = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
             findingList = new StackPanel();
             sv.Content = findingList;
-            Grid.SetRow(sv, 1);
+            Grid.SetRow(sv, 2);
             v.Children.Add(sv);
             return v;
         }
@@ -855,10 +766,10 @@ namespace Noxxer
             s.Setters.Add(new Setter(Control.BackgroundProperty, Th.Panel));
             s.Setters.Add(new Setter(Control.ForegroundProperty, Th.White));
             s.Setters.Add(new Setter(Control.BorderBrushProperty, Th.Line));
-            s.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(2)));
-            s.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(12, 8, 12, 8)));
-            s.Setters.Add(new Setter(TextBlock.FontSizeProperty, 13.0));
-            s.Setters.Add(new Setter(TextBlock.FontFamilyProperty, new FontFamily("Consolas")));
+            s.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1)));
+            s.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(14, 10, 14, 10)));
+            s.Setters.Add(new Setter(TextBlock.FontSizeProperty, 12.0));
+            s.Setters.Add(new Setter(TextBlock.FontFamilyProperty, new FontFamily("Segoe UI Semibold")));
             s.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
             return s;
         }
@@ -882,181 +793,300 @@ namespace Noxxer
             return sp;
         }
 
-        void SwitchLoginTab(int tab)
+        void SwitchLoginTab(int tab) { }
+
+        void SetPinDisplay(string pin)
         {
-            loginTab = tab;
-            Brush onBg = Th.White, onFg = Th.Black, offBg = Th.Black, offFg = Th.Dim;
-            loginTabBtn.Background = tab == 0 ? onBg : offBg;
-            ((TextBlock)loginTabBtn.Child).Foreground = tab == 0 ? onFg : offFg;
-            ((TextBlock)loginTabBtn.Child).FontWeight = tab == 0 ? FontWeights.SemiBold : FontWeights.Normal;
-            regTabBtn.Background = tab == 1 ? onBg : offBg;
-            ((TextBlock)regTabBtn.Child).Foreground = tab == 1 ? onFg : offFg;
-            ((TextBlock)regTabBtn.Child).FontWeight = tab == 1 ? FontWeights.SemiBold : FontWeights.Normal;
-            if (loginPanelUi != null) loginPanelUi.Visibility = tab == 0 ? Visibility.Visible : Visibility.Collapsed;
-            if (regPanelUi != null) regPanelUi.Visibility = tab == 1 ? Visibility.Visible : Visibility.Collapsed;
+            if (pinDisplayChars == null) return;
+            currentPin = (pin ?? "").Trim().ToUpperInvariant();
+            for (int i = 0; i < pinDisplayChars.Length; i++)
+            {
+                TextBlock tb = pinDisplayChars[i];
+                Border box = pinBoxes != null && i < pinBoxes.Length ? pinBoxes[i] : null;
+                if (i < currentPin.Length)
+                {
+                    tb.Text = currentPin[i].ToString();
+                    tb.Foreground = Th.White;
+                    if (box != null) box.BorderBrush = Th.White;
+                }
+                else
+                {
+                    tb.Text = "";
+                    tb.Foreground = Th.Dim;
+                    if (box != null) box.BorderBrush = Th.Line;
+                }
+            }
         }
 
-        Grid BuildLogin()
+        void UpdatePinBanner(bool force = false)
         {
-            Grid v = new Grid { Margin = new Thickness(36, 10, 36, 22) };
+            if (pinBanner == null) return;
+            AuthResult r = Auth.PingServer();
+            pinBanner.Text = r.Error ?? "";
+            pinBanner.Foreground = r.Ok ? Th.Ok : Th.High;
+            pinBanner.Cursor = Cursors.Hand;
+            if (!force)
+            {
+                pinBanner.ToolTip = "Haz click para volver a probar la conexión";
+                pinBanner.MouseLeftButtonUp -= BannerRetryClick;
+                pinBanner.MouseLeftButtonUp += BannerRetryClick;
+            }
+        }
+
+        void BannerRetryClick(object s, MouseButtonEventArgs e)
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (pinBanner != null) { pinBanner.Text = "Comprobando conexión..."; pinBanner.Foreground = Th.Muted; pinBanner.Cursor = Cursors.Wait; }
+                }));
+                Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(true); }));
+            });
+        }
+
+        Grid BuildPinAuth()
+        {
+            Grid v = new Grid { Margin = new Thickness(52, 8, 52, 24) };
             StackPanel root = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
-            TextBlock title = TB(Spaced("AUTHENTICATION"), 12, Th.White, true, null);
+            // Header label
+            TextBlock title = TB("SCAN AUTHORIZATION", 10.5, Th.Dim, true, "Segoe UI Semibold");
             title.HorizontalAlignment = HorizontalAlignment.Center;
+            title.Margin = new Thickness(0, 0, 0, 8);
             root.Children.Add(title);
-            loginBanner = TB("Inicia sesión o crea una cuenta con tu licencia", 11.5, Th.Muted);
-            loginBanner.TextAlignment = TextAlignment.Center;
-            loginBanner.HorizontalAlignment = HorizontalAlignment.Center;
-            loginBanner.TextWrapping = TextWrapping.Wrap;
-            loginBanner.Margin = new Thickness(0, 8, 0, 18);
-            root.Children.Add(loginBanner);
 
-            Grid tabs = new Grid { Margin = new Thickness(0, 0, 0, 20) };
-            tabs.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            tabs.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            // Connection status banner
+            pinBanner = TB("Comprobando conexión...", 10.5, Th.Muted, false, "Segoe UI Semibold");
+            pinBanner.TextAlignment = TextAlignment.Center;
+            pinBanner.HorizontalAlignment = HorizontalAlignment.Center;
+            pinBanner.TextWrapping = TextWrapping.Wrap;
+            pinBanner.Margin = new Thickness(0, 0, 0, 18);
+            root.Children.Add(pinBanner);
 
-            Action<Border, int> mkTab = delegate (Border b, int idx)
+            // PIN card container (solid panel)
+            Border card = new Border { Background = Th.PanelHi, BorderBrush = Th.LineSoft, BorderThickness = new Thickness(1), HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(28, 26, 28, 20) };
+            StackPanel pinCard = new StackPanel();
+            card.Child = pinCard;
+
+            // Label
+            TextBlock pl = TB("YOUR PIN", 9.5, Th.Dim, true, "Segoe UI Semibold");
+            pl.HorizontalAlignment = HorizontalAlignment.Center;
+            pl.Margin = new Thickness(0, 0, 0, 12);
+            pinCard.Children.Add(pl);
+
+            // PIN grid (8 squares) — SOLID look, sharp
+            Grid pinGrid = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+            int n = 8;
+            pinDisplayChars = new TextBlock[n];
+            pinBoxes = new Border[n];
+            double totalW = 420;
+            double boxW = (totalW - (n - 1) * 6) / n;
+            pinGrid.HorizontalAlignment = HorizontalAlignment.Center;
+            pinGrid.Width = totalW;
+            pinGrid.Height = 56;
+            for (int i = 0; i < n; i++)
             {
-                b.BorderBrush = Th.Line;
-                b.BorderThickness = new Thickness(2);
-                b.Padding = new Thickness(0, 10, 0, 10);
-                b.Cursor = Cursors.Hand;
-                b.Background = Th.Black;
-                TextBlock txt = TB(idx == 0 ? "LOGIN" : "SIGN UP", 11.5, Th.Dim);
-                txt.FontWeight = FontWeights.Normal;
-                txt.Foreground = Th.Dim;
-                txt.TextAlignment = TextAlignment.Center;
-                txt.HorizontalAlignment = HorizontalAlignment.Center;
-                txt.VerticalAlignment = VerticalAlignment.Center;
-                b.Child = txt;
-                Grid.SetColumn(b, idx);
-            };
+                pinGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(boxW + 6) });
+                Border b = new Border { BorderBrush = Th.Line, BorderThickness = new Thickness(1), Background = Th.Panel, Width = boxW, Height = 56, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
+                TextBlock tb = TB("", 20, Th.White, true, "Consolas");
+                tb.HorizontalAlignment = HorizontalAlignment.Center;
+                tb.VerticalAlignment = VerticalAlignment.Center;
+                b.Child = tb;
+                pinBoxes[i] = b;
+                pinDisplayChars[i] = tb;
+                Grid.SetColumn(b, i);
+                Grid.SetColumnSpan(b, 1);
+                pinGrid.Children.Add(b);
+            }
+            pinCard.Children.Add(pinGrid);
 
-            loginTabBtn = new Border();
-            mkTab(loginTabBtn, 0);
-            loginTabBtn.MouseLeftButtonUp += delegate { SwitchLoginTab(0); };
-            regTabBtn = new Border();
-            mkTab(regTabBtn, 1);
-            regTabBtn.MouseLeftButtonUp += delegate { SwitchLoginTab(1); };
-            regTabBtn.BorderThickness = new Thickness(0, 2, 2, 2);
-            loginTabBtn.BorderThickness = new Thickness(2, 2, 0, 2);
-            tabs.Children.Add(loginTabBtn);
-            tabs.Children.Add(regTabBtn);
-            root.Children.Add(tabs);
+            // Thin divider inside card
+            Border d1 = new Border { Background = Th.LineSoft, Height = 1, Margin = new Thickness(0, 2, 0, 14), HorizontalAlignment = HorizontalAlignment.Stretch };
+            pinCard.Children.Add(d1);
 
-            // Login panel
-            StackPanel loginPanel = new StackPanel();
-            loginPanelUi = loginPanel;
-            loginPanel.Children.Add(Field("Username", Tb("", out loginUser)));
-            loginPanel.Children.Add(Field("Password", Tb("", out loginPass)));
-            loginPanel.Children.Add(Field("License Key", Tb("", out loginKey)));
-            loginMsg = TB("", 11, Th.High);
-            loginMsg.TextWrapping = TextWrapping.Wrap;
-            loginMsg.Margin = new Thickness(2, 2, 2, 10);
-            loginPanel.Children.Add(loginMsg);
-            Button loginBtn = Btn("INICIAR SESIÓN", "Primary", delegate { DoLogin(); });
-            loginBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
-            loginBtn.Margin = new Thickness(0, 6, 0, 0);
-            loginPanel.Children.Add(loginBtn);
+            // Optional username field
+            Grid optG = new Grid { Margin = new Thickness(0, 0, 0, 2) };
+            optG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
+            optG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            TextBlock ul = TB("USERNAME", 9.5, Th.Dim, true, "Segoe UI Semibold");
+            ul.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(ul, 0);
+            optG.Children.Add(ul);
+            pinOptionalUser = Tb("", out pinOptionalUser);
+            pinOptionalUser.HorizontalAlignment = HorizontalAlignment.Stretch;
+            Grid.SetColumn(pinOptionalUser, 1);
+            optG.Children.Add(pinOptionalUser);
+            pinCard.Children.Add(optG);
 
-            // Register panel
-            StackPanel regPanel = new StackPanel { Visibility = Visibility.Collapsed };
-            regPanelUi = regPanel;
-            regPanel.Children.Add(Field("Username", Tb("", out regUser)));
-            regPanel.Children.Add(Field("Password", Tb("", out regPass)));
-            regPanel.Children.Add(Field("Confirm Password", Tb("", out regPass2)));
-            regPanel.Children.Add(Field("License Key", Tb("", out regKey)));
-            regMsg = TB("", 11, Th.High);
-            regMsg.TextWrapping = TextWrapping.Wrap;
-            regMsg.Margin = new Thickness(2, 2, 2, 10);
-            regPanel.Children.Add(regMsg);
-            Button regBtn = Btn("CREAR CUENTA", "Primary", delegate { DoRegister(); });
-            regBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
-            regBtn.Margin = new Thickness(0, 6, 0, 0);
-            regPanel.Children.Add(regBtn);
+            TextBlock optHint = TB("Optional. Shown to the administrator on Discord for identification.", 9.5, Th.Dim);
+            optHint.Margin = new Thickness(130, 6, 0, 0);
+            optHint.HorizontalAlignment = HorizontalAlignment.Stretch;
+            optHint.TextWrapping = TextWrapping.Wrap;
+            pinCard.Children.Add(optHint);
 
-            TextBlock foot = new TextBlock();
-            string su = Auth.ServerUrl;
-            foot = TB("Server: " + su, 10, Th.Dim, false, "Consolas");
+            root.Children.Add(card);
+
+            // Status line
+            pinStatus = TB("Press REQUEST PING to generate a PIN and send a request to the admin channel on Discord.", 10.5, Th.Muted, false, "Segoe UI Semibold");
+            pinStatus.TextAlignment = TextAlignment.Center;
+            pinStatus.HorizontalAlignment = HorizontalAlignment.Center;
+            pinStatus.TextWrapping = TextWrapping.Wrap;
+            pinStatus.Margin = new Thickness(0, 18, 0, 14);
+            root.Children.Add(pinStatus);
+
+            pinMsg = TB("", 10.5, Th.High, false, "Segoe UI Semibold");
+            pinMsg.TextWrapping = TextWrapping.Wrap;
+            pinMsg.Margin = new Thickness(2, 0, 2, 14);
+            pinMsg.HorizontalAlignment = HorizontalAlignment.Center;
+            pinMsg.TextAlignment = TextAlignment.Center;
+            root.Children.Add(pinMsg);
+
+            // Action row: solid Primary + Ghost
+            Grid btnRow = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            pinRequestBtn = Btn("REQUEST PING", "Primary", delegate { DoRequestPin(); });
+            pinRequestBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
+            pinRequestBtn.Margin = new Thickness(0, 0, 6, 0);
+            pinRequestBtn.Padding = new Thickness(0, 12, 0, 12);
+            pinRequestBtn.FontSize = 13;
+            Grid.SetColumn(pinRequestBtn, 0);
+            btnRow.Children.Add(pinRequestBtn);
+            pinCancelBtn = Btn("CANCEL", "Ghost", delegate { DoCancelPin(); });
+            pinCancelBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
+            pinCancelBtn.Margin = new Thickness(6, 0, 0, 0);
+            pinCancelBtn.Padding = new Thickness(0, 12, 0, 12);
+            pinCancelBtn.FontSize = 13;
+            pinCancelBtn.IsEnabled = false;
+            pinCancelBtn.Opacity = 0.35;
+            Grid.SetColumn(pinCancelBtn, 1);
+            btnRow.Children.Add(pinCancelBtn);
+            root.Children.Add(btnRow);
+
+            TextBlock foot = TB("Server: " + Auth.ServerUrl, 9.5, Th.Dim, false, "Consolas");
             foot.HorizontalAlignment = HorizontalAlignment.Center;
-            foot.Margin = new Thickness(0, 20, 0, 0);
-            root.Children.Add(loginPanel);
-            root.Children.Add(regPanel);
+            foot.Margin = new Thickness(0, 22, 0, 0);
             root.Children.Add(foot);
 
-            Dispatcher.BeginInvoke(new Action(delegate { SwitchLoginTab(0); }));
-
+            SetPinDisplay("");
+            ThreadPool.QueueUserWorkItem(delegate { Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(); })); });
             v.Children.Add(root);
             return v;
         }
 
-        void DoLogin()
+        void SetPinWaitingUI(bool waiting)
         {
-            string u = (loginUser.Text ?? "").Trim();
-            string p = loginPass.Text ?? "";
-            string k = (loginKey.Text ?? "").Trim().ToUpperInvariant();
-            loginMsg.Text = "";
-            if (u.Length < 1 || p.Length < 1 || k.Length < 1) { loginMsg.Text = "Rellena todos los campos"; return; }
-            loginMsg.Foreground = Th.Muted;
-            loginMsg.Text = "Conectando...";
+            lock (pinLock)
+            {
+                pinWaiting = waiting;
+            }
+            if (pinRequestBtn != null)
+            {
+                pinRequestBtn.IsEnabled = !waiting;
+                pinRequestBtn.Opacity = waiting ? 0.4 : 1.0;
+            }
+            if (pinCancelBtn != null)
+            {
+                pinCancelBtn.IsEnabled = waiting;
+                pinCancelBtn.Opacity = waiting ? 1.0 : 0.4;
+            }
+            if (pinOptionalUser != null) pinOptionalUser.IsEnabled = !waiting;
+        }
+
+        void DoRequestPin()
+        {
+            if (pinWaiting) return;
+            pinMsg.Text = "";
+            string optUser = (pinOptionalUser.Text ?? "").Trim();
+            SetPinDisplay("");
+            SetPinWaitingUI(true);
+            if (pinStatus != null) { pinStatus.Foreground = Th.Muted; pinStatus.Text = "Solicitando PIN..."; }
             ThreadPool.QueueUserWorkItem(delegate
             {
-                AuthResult r = Auth.Login(u, p, k);
-                Dispatcher.BeginInvoke(new Action(delegate
+                CancellationTokenSource cts = new CancellationTokenSource();
+                Interlocked.Exchange(ref pinCancellation, cts);
+                try
                 {
-                    if (r.Ok && r.Session != null)
+                    PinResult rq = Auth.RequestPin(string.IsNullOrWhiteSpace(optUser) ? null : optUser);
+                    Dispatcher.BeginInvoke(new Action(delegate
                     {
-                        session = r.Session;
-                        loginMsg.Foreground = Th.Ok;
-                        loginMsg.Text = "¡Bienvenido, " + r.Session.Username + "!";
-                        Toast("Sesión iniciada", "Licencia: " + r.Session.RemainingDays + " días restantes", Th.Ok);
-                        Show(0);
-                    }
-                    else
+                        if (!rq.Ok)
+                        {
+                            SetPinWaitingUI(false);
+                            pinMsg.Foreground = Th.High;
+                            pinMsg.Text = rq.Error ?? "Error al solicitar PIN";
+                            if (pinStatus != null) { pinStatus.Foreground = Th.High; pinStatus.Text = "No se pudo solicitar el PIN al servidor."; }
+                            return;
+                        }
+                        SetPinDisplay(rq.Session != null ? rq.Session.Pin : rq.Status);
+                        pinStatus.Foreground = Th.Med;
+                        pinStatus.Text = "Esperando aprobación en Discord... (t=0s)";
+                        if (rq.Session != null)
+                        {
+                            if (string.IsNullOrWhiteSpace(rq.Session.Username) && !string.IsNullOrWhiteSpace(optUser))
+                                rq.Session.Username = optUser.Trim();
+                        }
+                        PinSession mySession = rq.Session;
+                        ThreadPool.QueueUserWorkItem(delegate
+                        {
+                            PinResult final = Auth.PollUntilResolved(mySession, 900, 3000, delegate (string statusMsg)
+                            {
+                                Dispatcher.BeginInvoke(new Action(delegate
+                                {
+                                    if (pinStatus != null) { pinStatus.Foreground = Th.Med; pinStatus.Text = statusMsg; }
+                                }));
+                            }, cts.Token);
+                            Dispatcher.BeginInvoke(new Action(delegate
+                            {
+                                SetPinWaitingUI(false);
+                                if (cts.IsCancellationRequested) return;
+                                if (final.Ok && final.Status == "approved" && final.Session != null)
+                                {
+                                    pinSession = final.Session;
+                                    pinStatus.Foreground = Th.Ok;
+                                    pinStatus.Text = "✅ PIN aprobado. Empezando escaneo...";
+                                    Toast("Autorización concedida", "PIN aprobado por el administrador", Th.Ok);
+                                    Show(1);
+                                }
+                                else
+                                {
+                                    pinMsg.Foreground = Th.High;
+                                    pinMsg.Text = final.Error ?? (final.Status == "expired" ? "Tiempo agotado o PIN expirado. Vuelve a pulsar REQUEST PING." : "Acceso denegado");
+                                    if (pinStatus != null)
+                                    {
+                                        pinStatus.Foreground = final.Status == "expired" ? Th.Med : Th.High;
+                                        pinStatus.Text = final.Status == "expired" ? "PIN expirado. Vuelve a pulsar REQUEST PING." : (final.Error ?? "Acceso denegado");
+                                    }
+                                }
+                            }));
+                        });
+                    }));
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.BeginInvoke(new Action(delegate
                     {
-                        loginMsg.Foreground = Th.High;
-                        loginMsg.Text = r.Error ?? "Error desconocido";
-                    }
-                }));
+                        SetPinWaitingUI(false);
+                        pinMsg.Foreground = Th.High;
+                        pinMsg.Text = "Error: " + ex.Message;
+                    }));
+                }
             });
         }
 
-        void DoRegister()
+        void DoCancelPin()
         {
-            string u = (regUser.Text ?? "").Trim();
-            string p = regPass.Text ?? "";
-            string p2 = regPass2.Text ?? "";
-            string k = (regKey.Text ?? "").Trim().ToUpperInvariant();
-            regMsg.Text = "";
-            if (u.Length < 3) { regMsg.Text = "Username debe tener 3+ caracteres"; return; }
-            if (p.Length < 6) { regMsg.Text = "Password debe tener 6+ caracteres"; return; }
-            if (p != p2) { regMsg.Text = "Las contraseñas no coinciden"; return; }
-            if (k.Length < 1) { regMsg.Text = "Introduce tu License Key"; return; }
-            regMsg.Foreground = Th.Muted;
-            regMsg.Text = "Creando cuenta...";
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                AuthResult r = Auth.SignUp(u, p, k);
-                AuthResult l = null;
-                Dispatcher.BeginInvoke(new Action(delegate
-                {
-                    if (r.Ok)
-                    {
-                        l = Auth.Login(u, p, k);
-                        if (l.Ok && l.Session != null)
-                        {
-                            session = l.Session;
-                            regMsg.Foreground = Th.Ok;
-                            regMsg.Text = "Cuenta creada";
-                            Toast("Cuenta creada", "Bienvenido, " + u, Th.Ok);
-                            Show(0);
-                            return;
-                        }
-                    }
-                    regMsg.Foreground = Th.High;
-                    regMsg.Text = r.Error ?? (l != null ? l.Error : null) ?? "Error desconocido";
-                }));
-            });
+            lock (pinLock) pinWaiting = false;
+            CancellationTokenSource cts = Interlocked.Exchange(ref pinCancellation, null);
+            try { if (cts != null) cts.Cancel(); } catch { }
+            SetPinWaitingUI(false);
+            if (pinStatus != null) { pinStatus.Foreground = Th.Muted; pinStatus.Text = "Solicitud cancelada. Pulsa REQUEST PING para volver a solicitar."; }
+        }
+
+        Grid BuildLogin()
+        {
+            return BuildPinAuth();
         }
 
         void AddChip(StackPanel host, string text, int f)
@@ -1189,8 +1219,26 @@ namespace Noxxer
 
             if (v == 1) statusText.Text = "ready";
             if (v == 0) statusText.Text = "welcome";
-            if (v == 5) statusText.Text = "authentication required";
+            if (v == 5)
+            {
+                statusText.Text = "scan authorization required";
+                if (!Program.PreviewMode) RunConnectionDiagnostic();
+            }
         }
+
+        void RunConnectionDiagnostic()
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    if (pinBanner != null) { pinBanner.Text = "Comprobando conexión con el servidor..."; pinBanner.Foreground = Th.Muted; pinBanner.Cursor = Cursors.Wait; }
+                }));
+                Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(true); }));
+            });
+        }
+
+
 
         void OnLoaded(object s, RoutedEventArgs e)
         {
@@ -1212,23 +1260,30 @@ namespace Noxxer
                 ya.BeginTime = fa.BeginTime;
                 ((TranslateTransform)letters[i].RenderTransform).BeginAnimation(TranslateTransform.YProperty, ya);
             }
-            Show(5);
+            Show(0);
         }
 
         // ---------------------------------------------------------- scan flow
         void StartScan()
         {
-            if (session == null) { Toast("Acceso denegado", "Debes iniciar sesión", Th.High); Show(5); return; }
+            if (Program.PreviewMode) return;
+            bool hasAnyAuth = session != null || pinSession != null;
+            if (!hasAnyAuth) { Toast("Acceso denegado", "Debes solicitar un PIN y aprobarlo en Discord", Th.High); Show(5); return; }
             if (!consented || eng.Running) return;
-            AuthResult v = Auth.Verify(session);
-            if (!v.Ok)
+
+            if (session != null)
             {
-                Toast("Licencia inválida", v.Error ?? "Licencia no válida", Th.High);
-                session = null;
-                Show(5);
-                return;
+                AuthResult v = Auth.Verify(session);
+                if (!v.Ok)
+                {
+                    Toast("Licencia inválida", v.Error ?? "Licencia no válida", Th.High);
+                    session = null;
+                    Show(5);
+                    return;
+                }
+                session = v.Session;
             }
-            session = v.Session;
+
             dHigh = dMed = dLow = dFiles = 0;
             shownProg = 0;
             lastHit.Text = "";
@@ -1297,12 +1352,13 @@ namespace Noxxer
             {
                 try { notify.ShowBalloonTip(5000, "AC Noxxer  -  " + word, sub, v == 2 ? System.Windows.Forms.ToolTipIcon.Warning : System.Windows.Forms.ToolTipIcon.Info); } catch { }
             }
-            if (session != null)
+            if (session != null || pinSession != null)
             {
                 AuthSession sess = session;
+                PinSession ps = pinSession;
                 ThreadPool.QueueUserWorkItem(delegate
                 {
-                    try { Auth.SubmitScan(sess, eng); } catch { }
+                    try { Auth.SubmitScan(sess, eng, ps); } catch { }
                 });
             }
         }
@@ -1373,9 +1429,6 @@ namespace Noxxer
             lastFrame = now;
             bool scanning = eng.Running;
 
-            bg.Energy = scanning ? 1 : 0.12;
-            runner.TargetSpeed = scanning ? 0.32 : 0.05;
-
             double target = scanning ? eng.Progress : (view == 3 ? 1 : 0);
             shownProg += (target - shownProg) * Math.Min(1, dt * 6);
             double tw = trackHost.ActualWidth;
@@ -1384,15 +1437,12 @@ namespace Noxxer
             string pct = ((int)Math.Round(shownProg * 100)) + "%";
             if (pct != lastPct) { pctText.Text = pct; lastPct = pct; }
 
-            // shimmer inside the fill, idle sweep across the track
-            shimmerX += dt * 260;
-            if (shimmerX > fill.Width + 60) shimmerX = -70;
-            Canvas.SetLeft(shimmer, shimmerX);
-            shimmer.Visibility = scanning ? Visibility.Visible : Visibility.Collapsed;
-            sweepX += dt * 200;
+            // Subtle idle sweep (slow) — no shimmer during scan (solid fill)
+            sweepX += dt * 120;
             if (sweepX > tw + 90) sweepX = -100;
             ((TranslateTransform)idleSweep.RenderTransform).X = sweepX;
             idleSweep.Visibility = (!scanning && view != 3 && view != 4) ? Visibility.Visible : Visibility.Collapsed;
+            shimmer.Visibility = Visibility.Collapsed;
 
             if (scanning)
             {
@@ -1416,21 +1466,14 @@ namespace Noxxer
                 scanNums[2].Text = ((int)Math.Round(dLow)).ToString();
                 scanNums[3].Text = ((int)Math.Round(dFiles)).ToString("N0");
 
-                bool blink = (Environment.TickCount / 160) % 2 == 0;
+                bool blink = (Environment.TickCount / 220) % 2 == 0;
                 for (int i = 0; i < pips.Length; i++)
                 {
                     ModuleInfo m = eng.Modules[i];
                     Brush b = Th.Track;
-                    if (m.State == 1) b = blink ? Th.White : Th.Dim;
+                    if (m.State == 1) b = blink ? Th.White : Th.PanelHi;
                     else if (m.State == 2) b = m.High > 0 ? Th.High : m.Med > 0 ? Th.Med : m.Low > 0 ? Th.Low : Th.Ok;
                     pips[i].Background = b;
-                }
-
-                // title wave
-                for (int i = 0; i < letters.Length; i++)
-                {
-                    double w = Math.Sin(now.Ticks / 1.0e7 * 5 - i * 0.7);
-                    letters[i].Opacity = 0.55 + 0.45 * ((w + 1) / 2);
                 }
             }
             else
@@ -1442,20 +1485,6 @@ namespace Noxxer
                     resNums[2].Text = eng.TotalLow.ToString();
                     resNums[3].Text = eng.Files.ToString("N0");
                 }
-                // occasional glitch flicker on one letter
-                if (now > nextGlitch && view >= 0 && view != 4)
-                {
-                    nextGlitch = now.AddSeconds(3 + rnd.NextDouble() * 5);
-                    TextBlock t = letters[rnd.Next(letters.Length)];
-                    DoubleAnimationUsingKeyFrames f = new DoubleAnimationUsingKeyFrames();
-                    f.KeyFrames.Add(new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-                    f.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.15, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(60))));
-                    f.KeyFrames.Add(new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120))));
-                    f.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.3, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(170))));
-                    f.KeyFrames.Add(new DiscreteDoubleKeyFrame(1, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(260))));
-                    f.Completed += delegate { t.BeginAnimation(OpacityProperty, null); t.Opacity = 1; };
-                    t.BeginAnimation(OpacityProperty, f);
-                }
             }
         }
     }
@@ -1463,9 +1492,12 @@ namespace Noxxer
     // ===================================================================== entry
     static class Program
     {
+        internal static bool PreviewMode;
+
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
+            PreviewMode = Array.Exists(args, delegate(string arg) { return string.Equals(arg, "--preview", StringComparison.OrdinalIgnoreCase); });
             Application app = new Application();
             app.ShutdownMode = ShutdownMode.OnMainWindowClose;
             app.DispatcherUnhandledException += delegate(object s, DispatcherUnhandledExceptionEventArgs e)

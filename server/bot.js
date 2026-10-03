@@ -5,7 +5,7 @@ const TOKEN = process.env.DISCORD_TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
 const ADMIN_ID = process.env.ADMIN_ID;
 
-module.exports = function start(db) {
+module.exports = function start(db, app) {
   if (!TOKEN) {
     console.warn('[!] DISCORD_TOKEN no configurado en el .env -> bot no iniciado');
     return null;
@@ -18,7 +18,7 @@ module.exports = function start(db) {
     console.warn('[!] Unhandled Rejection (bot sigue corriendo):', r && r.message ? r.message : r);
   });
 
-  const { run, getOne, getAll, createLicense } = db;
+  const { run, getOne, getAll, createLicense, approvePin, rejectPin, listPendingPins, getPin } = db;
 
   const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages]
@@ -78,21 +78,51 @@ module.exports = function start(db) {
     new SlashCommandBuilder()
       .setName('setadminrole')
       .setDescription('Configura el rol de admin para comandos de licencias')
-      .addRoleOption(o => o.setName('rol').setDescription('Rol de admin').setRequired(true))
+      .addRoleOption(o => o.setName('rol').setDescription('Rol de admin').setRequired(true)),
+
+    new SlashCommandBuilder()
+      .setName('setpinchannel')
+      .setDescription('[Admin] Configura el canal donde llegan las solicitudes de PIN de escaneo')
+      .addChannelOption(o => o.setName('canal').setDescription('Canal de texto').setRequired(true)),
+
+    new SlashCommandBuilder()
+      .setName('scanpin')
+      .setDescription('[Admin] Aprobar, rechazar o listar PINs de escaneo')
+      .addSubcommand(s => s
+        .setName('approve')
+        .setDescription('Aprueba un PIN pendiente para iniciar escaneo')
+        .addStringOption(o => o.setName('pin').setDescription('PIN de 8 caracteres (Request Ping)').setRequired(true)))
+      .addSubcommand(s => s
+        .setName('reject')
+        .setDescription('Rechaza un PIN pendiente')
+        .addStringOption(o => o.setName('pin').setDescription('PIN de 8 caracteres').setRequired(true))
+        .addStringOption(o => o.setName('razon').setDescription('Motivo del rechazo (opcional)').setRequired(false)))
+      .addSubcommand(s => s
+        .setName('list')
+        .setDescription('Lista los PINs pendientes de aprobacion'))
   ];
 
   client.once('ready', async () => {
     console.log(`[+] Bot conectado como ${client.user.tag}`);
     const rest = new REST({ version: '10' }).setToken(TOKEN);
     try {
+      console.log(`[i] Registrando ${commands.length} slash commands...`);
+      console.log(`[i] Lista de comandos a registrar:`);
+      commands.forEach((c, i) => console.log(`    ${i + 1}. /${c.name}`));
+
       if (GUILD_ID) {
         await rest.put(Routes.applicationGuildCommands(client.user.id, GUILD_ID), { body: commands });
-        console.log('[+] Slash commands registrados en el guild ' + GUILD_ID);
+        console.log(`[+] Slash commands registrados en el guild ${GUILD_ID} (inmediato)`);
+        console.log(`[!] Si no aparecen, haz esto en Discord: Ajustes del server -> Integraciones -> Bots y Apps -> tu bot -> Comandos. O reinicia Discord (Ctrl+R).`);
       } else {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('[!] GUILD_ID no configurado: registrados globalmente (tarda ~1h)');
+        console.log('[!] GUILD_ID no configurado: registrados GLOBALMENTE (puede tardar ~1 hora en propagarse). Añade GUILD_ID al .env para que sea instantáneo.');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error('[✗] Error registrando slash commands:');
+      console.error(e && e.message ? e.message : e);
+      if (e && e.stack) console.error(e.stack);
+    }
     startScanReporter();
   });
 
@@ -111,21 +141,27 @@ module.exports = function start(db) {
         try { await i.reply({ content: '❌ Falta GUILD_ID en el .env del servidor', ephemeral: true }); } catch {}
         return;
       }
-      const member = i.member;
+
+      // Contestar YA a Discord (3s limite) con deferReply ANTES de cualquier check pesado
+      const ephemeralCmds = new Set(['setscanlogs', 'setadminrole', 'setpinchannel']);
       const cmd = i.commandName;
       let sub = null;
       try { if (i.options && typeof i.options.getSubcommand === 'function') sub = i.options.getSubcommand(); } catch {}
 
-      const adminCmds = new Set(['setscanlogs', 'setadminrole', 'license', 'bankey', 'unbankey']);
+      try { await i.deferReply({ ephemeral: ephemeralCmds.has(cmd) }); } catch (de) {
+        console.warn('[bot] deferReply falló (continuando):', de && de.message ? de.message : de);
+      }
+
+      const member = i.member;
+      const adminCmds = new Set(['setscanlogs', 'setadminrole', 'setpinchannel', 'license', 'bankey', 'unbankey', 'scanpin']);
       if (adminCmds.has(cmd)) {
         if (!isAdmin(i.user, member)) {
-          try { await i.reply({ content: '❌ No tienes permisos para usar este comando', ephemeral: true }); } catch {}
+          safeReply(i, '❌ No tienes permisos para usar este comando', true);
           return;
         }
       }
 
-      try { await i.deferReply({ ephemeral: (cmd === 'setscanlogs' || cmd === 'setadminrole') }); } catch {}
-
+      // La llamada a deferReply() ya se hizo ARRIBA, no repetirla aqui
       if (cmd === 'setscanlogs') {
         const ch = i.options.getChannel('canal');
         const existing = getOne('SELECT guild_id FROM guild_config WHERE guild_id = ?', [i.guildId]);
@@ -135,8 +171,7 @@ module.exports = function start(db) {
         } else {
           run('INSERT INTO guild_config (guild_id, scan_logs_channel, set_by) VALUES (?, ?, ?)', [i.guildId, ch.id, i.user.id]);
         }
-        try { await i.editReply({ content: `✅ Canal de logs de escaneos configurado en ${ch.toString()}` }); }
-        catch { try { await i.followUp({ content: `✅ Canal de logs de escaneos configurado en ${ch.toString()}`, ephemeral: true }); } catch {} }
+        safeReply(i, `✅ Canal de logs de escaneos configurado en ${ch.toString()}`, true);
         return;
       }
 
@@ -149,8 +184,65 @@ module.exports = function start(db) {
         } else {
           run('INSERT INTO guild_config (guild_id, admin_role, set_by) VALUES (?, ?, ?)', [i.guildId, role.id, i.user.id]);
         }
-        try { await i.editReply({ content: `✅ Rol de admin: ${role.toString()}` }); }
-        catch { try { await i.followUp({ content: `✅ Rol de admin: ${role.toString()}`, ephemeral: true }); } catch {} }
+        safeReply(i, `✅ Rol de admin: ${role.toString()}`, true);
+        return;
+      }
+
+      if (cmd === 'setpinchannel') {
+        const ch = i.options.getChannel('canal');
+        const existing = getOne('SELECT guild_id FROM guild_config WHERE guild_id = ?', [i.guildId]);
+        if (existing) {
+          run('UPDATE guild_config SET pin_channel = ?, set_by = ?, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ?',
+            [ch.id, i.user.id, i.guildId]);
+        } else {
+          run('INSERT INTO guild_config (guild_id, pin_channel, set_by) VALUES (?, ?, ?)', [i.guildId, ch.id, i.user.id]);
+        }
+        safeReply(i, `✅ Canal de solicitudes PIN configurado en ${ch.toString()}`, true);
+        return;
+      }
+
+      if (cmd === 'scanpin') {
+        if (sub === 'list') {
+          const rows = listPendingPins(50);
+          if (!rows.length) { safeReply(i, '🟢 No hay PINs pendientes. Todo limpio.', false); return; }
+          const lines = rows.map(r => {
+            const hwid = r.hwid ? `[\`${String(r.hwid).slice(0, 14)}…\`]` : '(sin HWID)';
+            const ip = r.ip ? `@${r.ip}` : '';
+            const user = r.username ? `user: **${r.username}**` : '';
+            return `• **\`${r.pin}\`**  ${hwid}${ip ? ' ' + ip : ''}${user ? ' • ' + user : ''}  (${formatDate(r.created_at)})`;
+          });
+          const emb = new EmbedBuilder()
+            .setTitle(`📋 Pins pendientes (${rows.length})`)
+            .setColor(0xFFB020)
+            .setDescription(lines.join('\n'))
+            .setFooter({ text: 'Usa /scanpin approve <PIN> para aprobarlo' });
+          safeReply(i, null, false, emb);
+          return;
+        }
+        if (sub === 'approve') {
+          const pin = (i.options.getString('pin') || '').toUpperCase().trim();
+          if (!/^[A-Z0-9]{4,16}$/.test(pin)) { safeReply(i, '❌ Formato de PIN invalido', false); return; }
+          const existing = getPin(pin);
+          if (!existing) { safeReply(i, `❌ PIN \`${pin}\` no encontrado`, false); return; }
+          if (existing.status !== 'pending') { safeReply(i, `⚠️ PIN \`${pin}\` ya esta **${existing.status.toUpperCase()}**.`, false); return; }
+          const upd = approvePin(pin, String(i.user.id));
+          safeReply(i, `✅ PIN aprobado: **\`${pin}\`** (por <@${i.user.id}>). El cliente podrá comenzar el escaneo.`, false);
+          try { notifyPinResult(upd, 'approved'); } catch {}
+          return;
+        }
+        if (sub === 'reject') {
+          const pin = (i.options.getString('pin') || '').toUpperCase().trim();
+          const reason = i.options.getString('razon') || null;
+          if (!/^[A-Z0-9]{4,16}$/.test(pin)) { safeReply(i, '❌ Formato de PIN invalido', false); return; }
+          const existing = getPin(pin);
+          if (!existing) { safeReply(i, `❌ PIN \`${pin}\` no encontrado`, false); return; }
+          if (existing.status !== 'pending') { safeReply(i, `⚠️ PIN \`${pin}\` ya esta **${existing.status.toUpperCase()}**.`, false); return; }
+          const upd = rejectPin(pin, String(i.user.id), reason);
+          safeReply(i, `🚫 PIN rechazado: **\`${pin}\`** (por <@${i.user.id}>)${reason ? ` — motivo: ${reason}` : ''}`, false);
+          try { notifyPinResult(upd, 'rejected'); } catch {}
+          return;
+        }
+        safeReply(i, '❓ Subcomando desconocido. Usa: approve, reject o list.', false);
         return;
       }
 
@@ -326,6 +418,57 @@ module.exports = function start(db) {
       reportPendingScans().catch(err => console.error(err));
     }, 5000);
     console.log('[+] Scan report loop iniciado (c/5s)');
+  }
+
+  function notifyPinRequest(pinRow) {
+    if (!GUILD_ID) return;
+    const cfg = getOne('SELECT pin_channel, scan_logs_channel FROM guild_config WHERE guild_id = ?', [GUILD_ID]);
+    const chId = (cfg && cfg.pin_channel) || (cfg && cfg.scan_logs_channel);
+    if (!chId) return;
+    const channel = client.channels.cache.get(chId);
+    if (!channel) return;
+    try {
+      const emb = new EmbedBuilder()
+        .setTitle('📶 NUEVA SOLICITUD DE ESCANEO (PIN)')
+        .setColor(0x5B9DFF)
+        .setTimestamp(pinRow.created_at)
+        .addFields(
+          { name: 'PIN', value: `\`\`\`${pinRow.pin}\`\`\``, inline: false },
+          { name: 'IP', value: pinRow.ip || '—', inline: true },
+          { name: 'HWID', value: pinRow.hwid ? `\`${String(pinRow.hwid).slice(0, 32)}\`` : '—', inline: true },
+          { name: 'Usuario (opcional)', value: pinRow.username || '—', inline: true },
+          { name: 'Expira', value: formatDate(pinRow.expires_at), inline: true }
+        )
+        .setFooter({ text: 'Usa /scanpin approve <PIN> para aprobar o /scanpin reject <PIN> para denegar' });
+      channel.send({ embeds: [emb] }).catch(err => console.error('notifyPinRequest send error:', err.message));
+    } catch (e) { console.error('notifyPinRequest error:', e.message); }
+  }
+
+  function notifyPinResult(pinRow, kind) {
+    if (!GUILD_ID || !pinRow) return;
+    const cfg = getOne('SELECT pin_channel, scan_logs_channel FROM guild_config WHERE guild_id = ?', [GUILD_ID]);
+    const chId = (cfg && cfg.pin_channel) || (cfg && cfg.scan_logs_channel);
+    if (!chId) return;
+    const channel = client.channels.cache.get(chId);
+    if (!channel) return;
+    try {
+      const approved = kind === 'approved';
+      const emb = new EmbedBuilder()
+        .setTitle(approved ? '✅ PIN APROBADO' : '🚫 PIN RECHAZADO')
+        .setColor(approved ? 0x3DDC84 : 0xFF3B3B)
+        .setTimestamp()
+        .addFields(
+          { name: 'PIN', value: `\`${pinRow.pin}\``, inline: true },
+          { name: 'Por', value: `<@${approved ? pinRow.approved_by : (pinRow.rejected_by || '0')}>`, inline: true },
+          { name: 'Motivo', value: (!approved && pinRow.reject_reason) ? pinRow.reject_reason : '—', inline: true }
+        );
+      channel.send({ embeds: [emb] }).catch(err => console.error('notifyPinResult send error:', err.message));
+    } catch (e) { console.error('notifyPinResult error:', e.message); }
+  }
+
+  // Exponer notificaciones al servidor Express (app)
+  if (app && typeof app === 'object') {
+    app._notifyPinRequest = notifyPinRequest;
   }
 
   client.login(TOKEN);

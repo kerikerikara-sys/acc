@@ -1,4 +1,47 @@
-# Pega aqui la URL de tu servidor de licencias (sin barra al final)
-# En desarrollo local:
-http://localhost:3000
-# Cuando lo hostees en internet: https://noxxer-api.tudominio.com
+# ======================================================================
+#  AC NOXXER - CONFIGURACION DE URL DEL SERVIDOR
+# ======================================================================
+#
+# INSTRUCCIONES MUY IMPORTANTE:
+# Este archivo debe ir JUNTO al ACNoxxer.exe EN CADA PC CLIENTE.
+# La URL aqui escrita DEBE apuntar a tu servidor donde este corriendo index.js.
+#
+# ----------------------------------------------------------------------
+# CASO 1: Desarrollo local (servidor y cliente en la MISMA PC)
+# ----------------------------------------------------------------------
+# http://localhost:3000
+#
+# ----------------------------------------------------------------------
+# CASO 2: Servidor en VPS (clientes en otros PCs) - USA ESTE FORMATO
+# ----------------------------------------------------------------------
+# Reemplaza 203.0.113.45 por la IP PUBLICA de tu VPS.
+# Reemplaza 3000 por el puerto que uses (si no lo cambiaste, es 3000).
+#
+# EJEMPLO - QUITA EL # Y PONE TU IP:
+# http://203.0.113.45:3000
+#
+# O con dominio:
+# https://noxxer-api.tudominio.com
+#
+# ----------------------------------------------------------------------
+# PASOS OBLIGATORIOS EN LA VPS PARA QUE FUNCIONE:
+# ----------------------------------------------------------------------
+# 1. El servidor index.js ya escucha en 0.0.0.0 por defecto, no hay que
+#    cambiarlo.
+# 2. Abre el PUERTO 3000 (o el que uses) EN EL FIREWALL DE LA VPS:
+#    - Windows Server:  Firewall de Windows -> Reglas de entrada -> Nueva regla -> Puerto -> TCP 3000
+#    - Linux (UFW):      sudo ufw allow 3000/tcp
+#    - Linux (iptables): sudo iptables -A INPUT -p tcp --dport 3000 -j ACCEPT
+# 3. Abre el puerto TAMBIEN en el panel de tu proveedor (muy importante):
+#    - AWS / Lightsail:   Security Groups -> Inbound -> TCP 3000 from 0.0.0.0/0
+#    - OVH / Hetzner / DigitalOcean: Firewall del proyecto -> add TCP 3000
+# 4. Arranca el servidor con start-server.bat (Windows) o "node index.js" (Linux)
+# 5. Verifica desde UN NAVEGADOR WEB del PC cliente que funciona:
+#    http://IP-DE-TU-VPS:3000/
+#    Deberias ver un JSON tipo: {"ok":true,"service":"Noxxer Licensing",...}
+#
+# ----------------------------------------------------------------------
+# TU CONFIGURACION ACTIVA (escribe TU URL debajo, SIN # al principio):
+# NOTA: Usamos puerto 30120 porque ya esta abierto en el firewall del proveedor
+# ----------------------------------------------------------------------
+http://185.230.55.236:30120

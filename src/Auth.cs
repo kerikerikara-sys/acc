@@ -5,6 +5,7 @@ using System.Management;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 
 namespace Noxxer
 {
@@ -15,6 +16,26 @@ namespace Noxxer
         public string Hwid;
         public int RemainingDays;
         public string ExpiresAt;
+    }
+
+    public class PinSession
+    {
+        public string Pin;
+        public string Status;
+        public string ApprovedBy;
+        public string RejectedBy;
+        public string ResolvedAt;
+        public string Hwid;
+        public string Username;
+    }
+
+    public class PinResult
+    {
+        public bool Ok;
+        public string Error;
+        public PinSession Session;
+        public string Status;
+        public string Message;
     }
 
     public class AuthResult
@@ -29,10 +50,16 @@ namespace Noxxer
         static readonly object lk = new object();
         static string cachedHwid;
 
+        [ThreadStatic] static string RawLastJson;
+
+        static string _cachedServerUrl = null;
+        static string _cachedServerUrlSource = null;
+
         public static string ServerUrl
         {
             get
             {
+                if (_cachedServerUrl != null) return _cachedServerUrl;
                 try
                 {
                     string f = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "noxxer_server.txt");
@@ -47,13 +74,30 @@ namespace Noxxer
                             if (s.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                                 s.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                             {
-                                return s.TrimEnd('/');
+                                string clean = s.TrimEnd('/');
+                                if (Uri.IsWellFormedUriString(clean, UriKind.Absolute))
+                                {
+                                    _cachedServerUrl = clean;
+                                    _cachedServerUrlSource = f;
+                                    return clean;
+                                }
                             }
                         }
                     }
                 }
                 catch { }
-                return "http://localhost:3000";
+                _cachedServerUrl = "http://localhost:3000";
+                _cachedServerUrlSource = "(default - noxxer_server.txt not found or invalid)";
+                return _cachedServerUrl;
+            }
+        }
+
+        public static string ServerUrlDebugInfo
+        {
+            get
+            {
+                string u = ServerUrl;
+                return "URL: " + u + " | Config: " + (_cachedServerUrlSource ?? "unknown");
             }
         }
 
@@ -169,10 +213,10 @@ namespace Noxxer
             return def;
         }
 
-        // ---------- HTTP ----------
         static string Request(string path, string method, Dictionary<string, object> data)
         {
-            string url = ServerUrl + path;
+            string baseUrl = ServerUrl;
+            string url = baseUrl + path;
             HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
             req.Method = method;
             req.ContentType = "application/json";
@@ -203,15 +247,29 @@ namespace Noxxer
                 using (WebResponse resp = req.GetResponse())
                 using (Stream s = resp.GetResponseStream())
                 using (StreamReader r = new StreamReader(s, Encoding.UTF8))
-                    return r.ReadToEnd();
+                {
+                    string txt = r.ReadToEnd();
+                    RawLastJson = txt;
+                    return txt;
+                }
             }
             catch (WebException wex)
             {
                 if (wex.Response != null)
                     using (Stream s = wex.Response.GetResponseStream())
                     using (StreamReader r = new StreamReader(s, Encoding.UTF8))
-                        return r.ReadToEnd();
-                throw;
+                    {
+                        string txt = r.ReadToEnd();
+                        RawLastJson = txt;
+                        return txt;
+                    }
+                RawLastJson = null;
+                throw new Exception(wex.Message + " [Server: " + baseUrl + "]");
+            }
+            catch (Exception ex)
+            {
+                RawLastJson = null;
+                throw new Exception(ex.Message + " [Server: " + baseUrl + "]");
             }
         }
 
@@ -283,9 +341,9 @@ namespace Noxxer
             catch (Exception ex) { return new AuthResult { Ok = false, Error = "Error de conexión: " + ex.Message }; }
         }
 
-        public static string SubmitScan(AuthSession s, Engine eng)
+        public static string SubmitScan(AuthSession s, Engine eng, PinSession pin = null)
         {
-            if (s == null || eng == null) return null;
+            if (eng == null) return null;
             try
             {
                 List<Finding> findings = eng.Snapshot();
@@ -298,9 +356,20 @@ namespace Noxxer
                     items.Add(d);
                 }
                 Dictionary<string, object> body = new Dictionary<string, object>();
-                body["username"] = s.Username;
-                body["licenseKey"] = s.LicenseKey;
-                body["hwid"] = s.Hwid;
+                if (s != null)
+                {
+                    body["username"] = s.Username;
+                    body["licenseKey"] = s.LicenseKey;
+                    body["hwid"] = s.Hwid;
+                }
+                if (pin != null)
+                {
+                    body["pin"] = pin.Pin;
+                    if (!string.IsNullOrEmpty(pin.Username)) body["username"] = pin.Username;
+                    if (!string.IsNullOrEmpty(pin.Hwid)) body["hwid"] = pin.Hwid;
+                }
+                if (!body.ContainsKey("hwid") || body["hwid"] == null) body["hwid"] = GetHwid();
+                if (!body.ContainsKey("username") || body["username"] == null) body["username"] = "pin:" + (pin != null ? pin.Pin : "anon");
                 body["startedAt"] = eng.Started.ToString("o");
                 body["endedAt"] = eng.Ended.ToString("o");
                 body["durationSec"] = (int)(eng.Ended - eng.Started).TotalSeconds;
@@ -316,6 +385,139 @@ namespace Noxxer
             {
                 try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "noxxer_scan.log"), DateTime.Now + "\r\n" + ex + "\r\n\r\n"); } catch { }
                 return null;
+            }
+        }
+
+        public static PinResult RequestPin(string optionalUsername = null)
+        {
+            try
+            {
+                Dictionary<string, object> d = new Dictionary<string, object>();
+                d["hwid"] = GetHwid();
+                if (!string.IsNullOrWhiteSpace(optionalUsername)) d["username"] = optionalUsername.Trim();
+                string json = Request("/api/auth/requestpin", "POST", d);
+                PinResult r = new PinResult();
+                r.Ok = ExtractBool(json, "ok");
+                r.Error = ExtractJson(json, "error");
+                r.Status = ExtractJson(json, "status");
+                r.Message = ExtractJson(json, "message");
+                if (r.Ok)
+                {
+                    PinSession ps = new PinSession();
+                    ps.Pin = ExtractJson(json, "pin");
+                    ps.Status = r.Status;
+                    ps.Hwid = GetHwid();
+                    if (!string.IsNullOrWhiteSpace(optionalUsername)) ps.Username = optionalUsername.Trim();
+                    r.Session = ps;
+                }
+                return r;
+            }
+            catch (Exception ex) { return new PinResult { Ok = false, Error = "Error de conexión: " + ex.Message }; }
+        }
+
+        public static PinResult PollApproval(string pin)
+        {
+            try
+            {
+                string clean = (pin ?? "").Trim().ToUpperInvariant();
+                string json = Request("/api/auth/poll/" + Uri.EscapeDataString(clean), "GET", null);
+                PinResult r = new PinResult();
+                r.Ok = ExtractBool(json, "ok");
+                r.Error = ExtractJson(json, "error");
+                r.Status = ExtractJson(json, "status");
+                r.Message = ExtractJson(json, "message");
+                if (r.Ok)
+                {
+                    r.Session = new PinSession();
+                    r.Session.Pin = ExtractJson(json, "pin");
+                    r.Session.Status = r.Status;
+                    r.Session.ApprovedBy = ExtractJson(json, "approved_by");
+                    r.Session.RejectedBy = ExtractJson(json, "rejected_by");
+                    r.Session.ResolvedAt = ExtractJson(json, "resolved_at");
+                    r.Session.Hwid = GetHwid();
+                }
+                return r;
+            }
+            catch (Exception ex) { return new PinResult { Ok = false, Error = "Error de conexión: " + ex.Message }; }
+        }
+
+        public delegate void PollProgressCallback(string statusMsg);
+
+        public static PinResult PollUntilResolved(PinSession session, int timeoutSec = 900, int intervalMs = 3000, PollProgressCallback cb = null, CancellationToken ct = default(CancellationToken))
+        {
+            if (session == null || string.IsNullOrEmpty(session.Pin))
+                return new PinResult { Ok = false, Error = "Sesión PIN no válida" };
+
+            DateTime start = DateTime.Now;
+            while (true)
+            {
+                if (ct.IsCancellationRequested)
+                    return new PinResult { Ok = false, Error = "Cancelado por el usuario" };
+
+                PinResult r = PollApproval(session.Pin);
+                if (!r.Ok) return r;
+
+                if (r.Status == "approved")
+                {
+                    if (r.Session != null)
+                    {
+                        r.Session.Username = session.Username;
+                        r.Session.Hwid = session.Hwid;
+                    }
+                    return r;
+                }
+                if (r.Status == "rejected")
+                {
+                    string reason = ExtractJson(RawLastJson, "reason");
+                    return new PinResult { Ok = false, Error = "Solicitud denegada por el administrador" + (!string.IsNullOrEmpty(reason) ? ": " + reason : ""), Status = "rejected" };
+                }
+                if (r.Status == "expired")
+                {
+                    return new PinResult { Ok = false, Error = r.Message ?? "El PIN ha expirado. Vuelve a pulsar Request Ping.", Status = "expired" };
+                }
+                if (r.Status == "pending")
+                {
+                    string msg = r.Message ?? "Esperando aprobación en Discord...";
+                    TimeSpan elapsed = DateTime.Now - start;
+                    msg += string.Format("  (t={0}s)", (int)elapsed.TotalSeconds);
+                    try { if (cb != null) cb(msg); } catch { }
+                    for (int i = 0; i < intervalMs; i += 200)
+                    {
+                        if (ct.IsCancellationRequested)
+                            return new PinResult { Ok = false, Error = "Cancelado por el usuario" };
+                        Thread.Sleep(200);
+                    }
+                    if ((DateTime.Now - start).TotalSeconds >= timeoutSec)
+                        return new PinResult { Ok = false, Error = "Tiempo de espera agotado. Vuelve a pulsar Request Ping." };
+                }
+                else
+                {
+                    Thread.Sleep(intervalMs);
+                }
+            }
+        }
+
+        public static AuthResult PingServer()
+        {
+            try
+            {
+                string json = Request("/", "GET", null);
+                bool ok = ExtractBool(json, "ok");
+                string service = ExtractJson(json, "service");
+                return new AuthResult
+                {
+                    Ok = ok,
+                    Error = ok ? ("Conectado a: " + (service ?? "Noxxer API") + " | " + ServerUrlDebugInfo) : ("Fallo en respuesta del servidor. " + ServerUrlDebugInfo)
+                };
+            }
+            catch (Exception ex)
+            {
+                return new AuthResult
+                {
+                    Ok = false,
+                    Error = "No se puede conectar al servidor: " + ex.Message + ". " + ServerUrlDebugInfo +
+                            " | Soluciones: 1) Asegurate de que el servidor este corriendo. 2) Revisa noxxer_server.txt con la IP publica de la VPS y el puerto correcto (ej: http://203.0.113.45:3000). 3) Abre el puerto 3000 en el firewall de tu VPS (Windows Firewall / UFW / iptables) y en el panel de tu proveedor cloud (AWS/GCP/OVH/Hetzner Security Groups)."
+                };
             }
         }
     }

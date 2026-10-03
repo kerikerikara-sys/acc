@@ -1,9 +1,12 @@
-﻿# Builds ACNoxxer.exe with the .NET Framework compiler that ships with Windows (no SDK needed).
+﻿param([switch]$Preview)
+
+# Builds ACNoxxer.exe with the .NET Framework compiler that ships with Windows (no SDK needed).
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $fx   = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319'
 $wpf  = "$fx\WPF"
-$out  = Join-Path $root 'ACNoxxer.exe'
+$outName = if ($Preview) { 'ACNoxxer-preview.exe' } else { 'ACNoxxer.exe' }
+$out  = Join-Path $root $outName
 $ico  = Join-Path $root 'noxxer.ico'
 
 # ---- icon (solid black tile, white frame, white N) -------------------------------------------
@@ -50,9 +53,10 @@ $refs = @(
 ) | ForEach-Object { "/r:$_" }
 
 $src = Get-ChildItem (Join-Path $root 'src') -Filter *.cs | ForEach-Object { $_.FullName }
+$manifestArgs = @()
+if (-not $Preview) { $manifestArgs = @("/win32manifest:$(Join-Path $root 'app.manifest')") }
 & "$fx\csc.exe" /nologo /target:winexe /platform:x64 /optimize+ /warn:3 `
-    "/out:$out" "/win32icon:$ico" "/win32manifest:$(Join-Path $root 'app.manifest')" `
-    @refs @src
+    "/out:$out" "/win32icon:$ico" @manifestArgs @refs @src
 if ($LASTEXITCODE -ne 0) { throw "Compilation failed" }
 Write-Host "Built $out" -ForegroundColor Green
 

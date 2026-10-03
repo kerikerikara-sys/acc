@@ -81,9 +81,27 @@ async function init() {
       guild_id TEXT PRIMARY KEY,
       scan_logs_channel TEXT,
       admin_role TEXT,
+      pin_channel TEXT,
       set_by TEXT,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS pins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pin TEXT UNIQUE NOT NULL,
+      hwid TEXT,
+      ip TEXT,
+      username TEXT,
+      status TEXT DEFAULT 'pending',
+      approved_by TEXT,
+      rejected_by TEXT,
+      reject_reason TEXT,
+      scan_id INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      resolved_at TEXT,
+      expires_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pins_pin ON pins(pin);
+    CREATE INDEX IF NOT EXISTS idx_pins_status ON pins(status);
   `);
   dirty = true;
 
@@ -185,10 +203,61 @@ async function init() {
     return { ok: true, remaining: Math.max(0, Math.ceil((exp - now) / (1000 * 60 * 60 * 24))) };
   }
 
+  const PIN_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const PIN_LENGTH = 8;
+
+  function generatePin() {
+    let s = '';
+    for (let i = 0; i < PIN_LENGTH; i++) s += PIN_CHARS[Math.floor(Math.random() * PIN_CHARS.length)];
+    return s;
+  }
+
+  function createPin(hwid, ip, username) {
+    const pin = generatePin();
+    const now = new Date();
+    const expires = new Date(now.getTime() + 15 * 60 * 1000);
+    run(
+      'INSERT INTO pins (pin, hwid, ip, username, status, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [pin, hwid || null, ip || null, username || null, 'pending', expires.toISOString()]
+    );
+    return getOne('SELECT * FROM pins WHERE pin = ?', [pin]);
+  }
+
+  function getPin(pin) {
+    return getOne('SELECT * FROM pins WHERE pin = ?', [(pin || '').toUpperCase().trim()]);
+  }
+
+  function listPendingPins(limit) {
+    const rows = getAll(
+      `SELECT * FROM pins WHERE status = 'pending' AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC LIMIT ?`,
+      [new Date().toISOString(), limit || 50]
+    );
+    return rows;
+  }
+
+  function approvePin(pin, by) {
+    const now = new Date().toISOString();
+    run(
+      `UPDATE pins SET status = 'approved', approved_by = ?, resolved_at = ? WHERE pin = ? AND status = 'pending'`,
+      [by || null, now, (pin || '').toUpperCase().trim()]
+    );
+    return getPin(pin);
+  }
+
+  function rejectPin(pin, by, reason) {
+    const now = new Date().toISOString();
+    run(
+      `UPDATE pins SET status = 'rejected', rejected_by = ?, reject_reason = ?, resolved_at = ? WHERE pin = ? AND status = 'pending'`,
+      [by || null, reason || null, now, (pin || '').toUpperCase().trim()]
+    );
+    return getPin(pin);
+  }
+
   const ctx = {
     SQL, db, save, run, getOne, getAll,
-    hashPassword, verifyPassword, generateKey,
-    createLicense, getActiveUserFromLicense, isLicenseValid
+    hashPassword, verifyPassword, generateKey, generatePin,
+    createLicense, getActiveUserFromLicense, isLicenseValid,
+    createPin, getPin, listPendingPins, approvePin, rejectPin
   };
   save();
   return ctx;

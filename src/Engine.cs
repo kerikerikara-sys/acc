@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -59,6 +60,7 @@ namespace Noxxer
         public readonly bool Admin;
 
         readonly object lk = new object();
+        readonly Dictionary<int, List<Rule>> flaggedProcesses = new Dictionary<int, List<Rule>>();
         Thread worker;
         readonly string self;
 
@@ -68,9 +70,12 @@ namespace Noxxer
             try { self = Process.GetCurrentProcess().MainModule.FileName; } catch { self = ""; }
 
             Modules.Add(new ModuleInfo { Name = "System integrity", Run = ModSystem });
+            Modules.Add(new ModuleInfo { Name = "Memory integrity", Run = ModMemoryIntegrity });
             Modules.Add(new ModuleInfo { Name = "DMA hardware", Run = ModDma });
             Modules.Add(new ModuleInfo { Name = "Drivers", Run = ModDrivers });
             Modules.Add(new ModuleInfo { Name = "Processes", Run = ModProcesses });
+            Modules.Add(new ModuleInfo { Name = "Network connections", Run = ModNetworkConnections });
+            Modules.Add(new ModuleInfo { Name = "Memory regions", Run = ModMemoryRegions });
             Modules.Add(new ModuleInfo { Name = "Execution traces", Run = ModTraces });
             Modules.Add(new ModuleInfo { Name = "Recycle Bin", Run = ModRecycle });
             Modules.Add(new ModuleInfo { Name = "File system", Run = ModFiles });
@@ -91,6 +96,7 @@ namespace Noxxer
         {
             if (Running) return;
             lock (lk) { Findings.Clear(); }
+            flaggedProcesses.Clear();
             foreach (ModuleInfo m in Modules) { m.State = 0; m.High = m.Med = m.Low = 0; }
             TotalHigh = TotalMed = TotalLow = 0;
             Files = 0; Bytes = 0; Frac = 0; Current = 0; Cancel = false; Running = true;
@@ -497,6 +503,28 @@ namespace Noxxer
             Add(days <= 14 ? 2 : 1, "Anti-Forensics", log + " log", title, "Cleared on " + t.ToString("yyyy-MM-dd HH:mm") + " (" + (int)days + " days ago).");
         }
 
+        // ---- Memory integrity / HVCI configuration
+        void ModMemoryIntegrity()
+        {
+            Act("Checking memory integrity");
+            try
+            {
+                object enabled = Registry.GetValue(
+                    @"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity",
+                    "Enabled", null);
+                if (enabled is int)
+                {
+                    bool on = (int)enabled == 1;
+                    Add(0, "System", "Memory integrity", on ? "HVCI enabled" : "HVCI disabled",
+                        on ? "Hypervisor-protected code integrity is enabled."
+                           : "Hypervisor-protected code integrity is disabled. This setting alone is not evidence of cheating.");
+                }
+                else
+                    Add(0, "System", "Memory integrity", "State unavailable", "Windows did not expose an HVCI configuration value.");
+            }
+            catch (Exception ex) { Add(0, "Error", "Memory integrity", "Registry query failed", ex.Message); }
+        }
+
         // ---- 2. DMA hardware
         void ModDma()
         {
@@ -616,7 +644,9 @@ namespace Noxxer
                 try { path = p.MainModule.FileName; } catch { }
                 Act("Process: " + name);
                 string hay = name + " " + title + " " + path;
-                foreach (Rule r in Matcher.MatchName(hay, 1))
+                List<Rule> processMatches = Matcher.MatchName(hay, 1);
+                if (processMatches.Count > 0) flaggedProcesses[p.Id] = processMatches;
+                foreach (Rule r in processMatches)
                     Add(r.Sev, r.Cat, "Process", r.Pat, "PID " + p.Id + "   ·   " + name + (title.Length > 0 ? "   ·   \"" + title + "\"" : "") + (path.Length > 0 ? "   ·   " + path : ""));
 
                 string ln = name.ToLowerInvariant();
@@ -639,6 +669,130 @@ namespace Noxxer
                     catch { }
                 }
             }
+        }
+
+        // ---- Network connections associated with processes already matched by scan rules
+        void ModNetworkConnections()
+        {
+            Act("Analyzing network connections");
+            try
+            {
+                using (ManagementObjectSearcher s = new ManagementObjectSearcher("root\\StandardCimv2",
+                    "SELECT OwningProcess,RemoteAddress,RemotePort FROM MSFT_NetTCPConnection WHERE State = 5"))
+                using (ManagementObjectCollection col = s.Get())
+                {
+                    HashSet<string> reported = new HashSet<string>();
+                    foreach (ManagementBaseObject o in col)
+                    {
+                        if (Cancel) return;
+                        uint rawPid;
+                        if (!uint.TryParse((o["OwningProcess"] ?? "").ToString(), out rawPid) || rawPid > int.MaxValue) continue;
+                        List<Rule> matches;
+                        if (!flaggedProcesses.TryGetValue((int)rawPid, out matches)) continue;
+                        string remote = (o["RemoteAddress"] ?? "").ToString();
+                        string port = (o["RemotePort"] ?? "").ToString();
+                        foreach (Rule r in matches)
+                        {
+                            string key = rawPid + "|" + remote + "|" + port + "|" + r.Pat;
+                            if (!reported.Add(key)) continue;
+                            Add(r.Sev, "Network", "Network connection", r.Pat,
+                                "Established TCP connection from PID " + rawPid + " to " + remote + ":" + port + ". The owning process also matched a scan rule.");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { Add(0, "Network", "Network connections", "Inspection unavailable", ex.Message); }
+        }
+
+        // ---- Read-only scan of executable private regions in FiveM / GTA processes
+        [StructLayout(LayoutKind.Sequential)]
+        struct MemoryBasicInformation
+        {
+            public IntPtr BaseAddress;
+            public IntPtr AllocationBase;
+            public uint AllocationProtect;
+            public UIntPtr RegionSize;
+            public uint State;
+            public uint Protect;
+            public uint Type;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern UIntPtr VirtualQueryEx(IntPtr process, IntPtr address, out MemoryBasicInformation info, UIntPtr length);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool ReadProcessMemory(IntPtr process, IntPtr address, byte[] buffer, UIntPtr size, out UIntPtr read);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern bool CloseHandle(IntPtr handle);
+
+        void ModMemoryRegions()
+        {
+            Act("Scanning executable game memory regions");
+            Process[] processes;
+            try { processes = Process.GetProcesses(); } catch { return; }
+            bool foundTarget = false;
+            foreach (Process p in processes)
+            {
+                if (Cancel) return;
+                string name;
+                try { name = p.ProcessName; } catch { continue; }
+                string lower = name.ToLowerInvariant();
+                if (!(lower.StartsWith("fivem") || lower == "gta5" || lower.Contains("gtaprocess"))) continue;
+                foundTarget = true;
+                Act("Memory regions: " + name);
+                IntPtr handle = OpenProcess(0x0410, false, p.Id);
+                if (handle == IntPtr.Zero) continue;
+                try
+                {
+                    const ulong maxBytesPerProcess = 32UL * 1024UL * 1024UL;
+                    const int readChunk = 64 * 1024;
+                    const uint memCommit = 0x1000, memPrivate = 0x20000, pageGuard = 0x100, pageNoAccess = 0x01;
+                    ulong scanned = 0;
+                    long address = 0;
+                    ScanCtx ctx = Ctx("Memory regions › " + name + " (PID " + p.Id + ")", 2, true, null, 0, 0);
+                    int structSize = Marshal.SizeOf(typeof(MemoryBasicInformation));
+                    for (int regions = 0; regions < 250000 && scanned < maxBytesPerProcess && !Cancel; regions++)
+                    {
+                        MemoryBasicInformation info;
+                        UIntPtr queried = VirtualQueryEx(handle, new IntPtr(address), out info, new UIntPtr((uint)structSize));
+                        if (queried == UIntPtr.Zero) break;
+                        long baseAddress = info.BaseAddress.ToInt64();
+                        ulong regionSize = info.RegionSize.ToUInt64();
+                        if (regionSize == 0 || regionSize > (ulong)long.MaxValue || baseAddress > long.MaxValue - (long)regionSize) break;
+                        long nextAddress = baseAddress + (long)regionSize;
+                        uint protection = info.Protect & 0xFF;
+                        bool executable = protection == 0x10 || protection == 0x20 || protection == 0x40 || protection == 0x80;
+                        if (info.State == memCommit && info.Type == memPrivate && executable && (info.Protect & (pageGuard | pageNoAccess)) == 0)
+                        {
+                            ulong offset = 0;
+                            while (offset < regionSize && scanned < maxBytesPerProcess && !Cancel)
+                            {
+                                int wanted = (int)Math.Min((ulong)readChunk, Math.Min(regionSize - offset, maxBytesPerProcess - scanned));
+                                byte[] buffer = new byte[wanted];
+                                UIntPtr bytesRead;
+                                bool ok = ReadProcessMemory(handle, new IntPtr(baseAddress + (long)offset), buffer, new UIntPtr((uint)wanted), out bytesRead);
+                                ulong got = bytesRead.ToUInt64();
+                                if (got > 0)
+                                {
+                                    ScanBuffer(buffer, (int)got, 0, ctx);
+                                    offset += got;
+                                    scanned += got;
+                                }
+                                if (!ok || got == 0) break;
+                            }
+                        }
+                        if (nextAddress <= address) break;
+                        address = nextAddress;
+                    }
+                }
+                finally { CloseHandle(handle); }
+            }
+            if (!foundTarget)
+                Add(0, "Memory", "Memory regions", "No target game running", "Start FiveM or GTA V to inspect executable private memory regions.");
         }
 
         // ---- 5. Execution traces

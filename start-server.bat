@@ -6,12 +6,18 @@ echo    AC Noxxer - Licensing Server + Discord Bot
 echo ============================================
 echo.
 
-REM --- Matar cualquier instancia antigua que este usando el puerto 3000 ---
-echo [*] Comprobando puerto 3000...
+REM --- Matar cualquier instancia antigua que este usando los puertos 3000 o 30120 ---
+echo [*] Comprobando puertos 3000 y 30120...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$p = Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique;" ^
-  "if ($p) { $p | ForEach-Object { try { Stop-Process -Id $_ -Force ; Write-Host ('[-] Cerrada instancia antigua (PID ' + $_ + ')') -ForegroundColor Yellow } catch {} } }" ^
-  " else { Write-Host '[+] Puerto 3000 libre' -ForegroundColor Green }"
+  "$p = @();" ^
+  "foreach ($port in @(3000,30120)) {" ^
+  "  $conns = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique;" ^
+  "  if ($conns) { $p += $conns ; Write-Host ('[-] Puerto ' + $port + ' ocupado') -ForegroundColor Yellow }" ^
+  "  else { Write-Host ('[+] Puerto ' + $port + ' libre') -ForegroundColor Green }" ^
+  "};" ^
+  "$p = $p | Select-Object -Unique;" ^
+  "if ($p) { $p | ForEach-Object { try { Stop-Process -Id $_ -Force ; Write-Host ('[-] Cerrado proceso (PID ' + $_ + ')') -ForegroundColor Yellow } catch {} } }" ^
+  " else { Write-Host '[+] Sin procesos que cerrar' -ForegroundColor Green }"
 
 timeout /t 1 /nobreak >nul
 
