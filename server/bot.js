@@ -18,7 +18,7 @@ module.exports = function start(db, app) {
     console.warn('[!] Unhandled Rejection (bot sigue corriendo):', r && r.message ? r.message : r);
   });
 
-  const { run, getOne, getAll, createLicense, approvePin, rejectPin, listPendingPins, getPin } = db;
+  const { run, getOne, getAll, createLicense, listActivePins, revokePin } = db;
 
   const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages]
@@ -82,24 +82,20 @@ module.exports = function start(db, app) {
 
     new SlashCommandBuilder()
       .setName('setpinchannel')
-      .setDescription('[Admin] Configura el canal donde llegan las solicitudes de PIN de escaneo')
-      .addChannelOption(o => o.setName('canal').setDescription('Canal de texto').setRequired(true)),
+      .setDescription('[Admin] Canal privado donde tambien llegan los PINs de escaneo (ademas de tu MD)')
+      .addChannelOption(o => o.setName('canal').setDescription('Canal de texto (solo admins)').setRequired(true)),
 
     new SlashCommandBuilder()
       .setName('scanpin')
-      .setDescription('[Admin] Aprobar, rechazar o listar PINs de escaneo')
-      .addSubcommand(s => s
-        .setName('approve')
-        .setDescription('Aprueba un PIN pendiente para iniciar escaneo')
-        .addStringOption(o => o.setName('pin').setDescription('PIN de 8 caracteres (Request Ping)').setRequired(true)))
-      .addSubcommand(s => s
-        .setName('reject')
-        .setDescription('Rechaza un PIN pendiente')
-        .addStringOption(o => o.setName('pin').setDescription('PIN de 8 caracteres').setRequired(true))
-        .addStringOption(o => o.setName('razon').setDescription('Motivo del rechazo (opcional)').setRequired(false)))
+      .setDescription('[Admin] Ver o anular PINs de escaneo')
       .addSubcommand(s => s
         .setName('list')
-        .setDescription('Lista los PINs pendientes de aprobacion'))
+        .setDescription('Lista los PINs activos (sin usar o verificados)'))
+      .addSubcommand(s => s
+        .setName('revoke')
+        .setDescription('Anula un PIN para que no se pueda usar')
+        .addStringOption(o => o.setName('pin').setDescription('PIN de 8 caracteres').setRequired(true))
+        .addStringOption(o => o.setName('razon').setDescription('Motivo (opcional)').setRequired(false)))
   ];
 
   client.once('ready', async () => {
@@ -143,7 +139,7 @@ module.exports = function start(db, app) {
       }
 
       // Contestar YA a Discord (3s limite) con deferReply ANTES de cualquier check pesado
-      const ephemeralCmds = new Set(['setscanlogs', 'setadminrole', 'setpinchannel']);
+      const ephemeralCmds = new Set(['setscanlogs', 'setadminrole', 'setpinchannel', 'scanpin']);
       const cmd = i.commandName;
       let sub = null;
       try { if (i.options && typeof i.options.getSubcommand === 'function') sub = i.options.getSubcommand(); } catch {}
@@ -203,46 +199,32 @@ module.exports = function start(db, app) {
 
       if (cmd === 'scanpin') {
         if (sub === 'list') {
-          const rows = listPendingPins(50);
-          if (!rows.length) { safeReply(i, '🟢 No hay PINs pendientes. Todo limpio.', false); return; }
+          const rows = listActivePins(25);
+          if (!rows.length) { safeReply(i, '🟢 No hay PINs activos.', true); return; }
           const lines = rows.map(r => {
-            const hwid = r.hwid ? `[\`${String(r.hwid).slice(0, 14)}…\`]` : '(sin HWID)';
-            const ip = r.ip ? `@${r.ip}` : '';
-            const user = r.username ? `user: **${r.username}**` : '';
-            return `• **\`${r.pin}\`**  ${hwid}${ip ? ' ' + ip : ''}${user ? ' • ' + user : ''}  (${formatDate(r.created_at)})`;
+            const state = r.status === 'verified' ? '✅ verificado' : '⏳ sin usar';
+            const who = r.username ? ` • **${r.username}**` : '';
+            const exp = r.status === 'verified' ? r.token_expires_at : r.expires_at;
+            return `• \`${r.pin}\` ${state}${who} • ${r.ip || 'IP ?'} • caduca ${discordTime(exp)}`;
           });
           const emb = new EmbedBuilder()
-            .setTitle(`📋 Pins pendientes (${rows.length})`)
-            .setColor(0xFFB020)
-            .setDescription(lines.join('\n'))
-            .setFooter({ text: 'Usa /scanpin approve <PIN> para aprobarlo' });
-          safeReply(i, null, false, emb);
+            .setTitle(`🔐 PINs activos (${rows.length})`)
+            .setColor(0xFFFFFF)
+            .setDescription(lines.join('\n').slice(0, 4000))
+            .setFooter({ text: '/scanpin revoke <PIN> para anular uno' });
+          safeReply(i, null, true, emb);
           return;
         }
-        if (sub === 'approve') {
-          const pin = (i.options.getString('pin') || '').toUpperCase().trim();
-          if (!/^[A-Z0-9]{4,16}$/.test(pin)) { safeReply(i, '❌ Formato de PIN invalido', false); return; }
-          const existing = getPin(pin);
-          if (!existing) { safeReply(i, `❌ PIN \`${pin}\` no encontrado`, false); return; }
-          if (existing.status !== 'pending') { safeReply(i, `⚠️ PIN \`${pin}\` ya esta **${existing.status.toUpperCase()}**.`, false); return; }
-          const upd = approvePin(pin, String(i.user.id));
-          safeReply(i, `✅ PIN aprobado: **\`${pin}\`** (por <@${i.user.id}>). El cliente podrá comenzar el escaneo.`, false);
-          try { notifyPinResult(upd, 'approved'); } catch {}
-          return;
-        }
-        if (sub === 'reject') {
+        if (sub === 'revoke') {
           const pin = (i.options.getString('pin') || '').toUpperCase().trim();
           const reason = i.options.getString('razon') || null;
-          if (!/^[A-Z0-9]{4,16}$/.test(pin)) { safeReply(i, '❌ Formato de PIN invalido', false); return; }
-          const existing = getPin(pin);
-          if (!existing) { safeReply(i, `❌ PIN \`${pin}\` no encontrado`, false); return; }
-          if (existing.status !== 'pending') { safeReply(i, `⚠️ PIN \`${pin}\` ya esta **${existing.status.toUpperCase()}**.`, false); return; }
-          const upd = rejectPin(pin, String(i.user.id), reason);
-          safeReply(i, `🚫 PIN rechazado: **\`${pin}\`** (por <@${i.user.id}>)${reason ? ` — motivo: ${reason}` : ''}`, false);
-          try { notifyPinResult(upd, 'rejected'); } catch {}
+          if (!/^[A-Z0-9]{8}$/.test(pin)) { safeReply(i, '❌ Formato de PIN invalido', true); return; }
+          const upd = revokePin(pin, String(i.user.id), reason);
+          if (!upd) { safeReply(i, `❌ El PIN \`${pin}\` no existe o ya no esta activo`, true); return; }
+          safeReply(i, `🚫 PIN \`${pin}\` anulado${reason ? ` — motivo: ${reason}` : ''}`, true);
           return;
         }
-        safeReply(i, '❓ Subcomando desconocido. Usa: approve, reject o list.', false);
+        safeReply(i, '❓ Subcomando desconocido. Usa: list o revoke.', true);
         return;
       }
 
@@ -373,7 +355,7 @@ module.exports = function start(db, app) {
       .setFooter({ text: `Scan ID #${scan.id}` })
       .addFields(
         { name: 'Usuario', value: `@${scan.username}`, inline: true },
-        { name: 'User ID', value: String(scan.user_id), inline: true },
+        { name: 'User ID', value: scan.user_id != null ? String(scan.user_id) : 'PIN', inline: true },
         { name: 'HWID', value: scan.hwid ? `\`${scan.hwid.slice(0, 20)}...\`` : '—', inline: true },
         { name: 'Veredicto', value: `**${scan.verdict || 'N/A'}**`, inline: true },
         { name: 'High', value: String(scan.total_high || 0), inline: true },
@@ -420,55 +402,65 @@ module.exports = function start(db, app) {
     console.log('[+] Scan report loop iniciado (c/5s)');
   }
 
-  function notifyPinRequest(pinRow) {
-    if (!GUILD_ID) return;
-    const cfg = getOne('SELECT pin_channel, scan_logs_channel FROM guild_config WHERE guild_id = ?', [GUILD_ID]);
-    const chId = (cfg && cfg.pin_channel) || (cfg && cfg.scan_logs_channel);
-    if (!chId) return;
-    const channel = client.channels.cache.get(chId);
-    if (!channel) return;
-    try {
-      const emb = new EmbedBuilder()
-        .setTitle('📶 NUEVA SOLICITUD DE ESCANEO (PIN)')
-        .setColor(0x5B9DFF)
-        .setTimestamp(pinRow.created_at)
-        .addFields(
-          { name: 'PIN', value: `\`\`\`${pinRow.pin}\`\`\``, inline: false },
-          { name: 'IP', value: pinRow.ip || '—', inline: true },
-          { name: 'HWID', value: pinRow.hwid ? `\`${String(pinRow.hwid).slice(0, 32)}\`` : '—', inline: true },
-          { name: 'Usuario (opcional)', value: pinRow.username || '—', inline: true },
-          { name: 'Expira', value: formatDate(pinRow.expires_at), inline: true }
-        )
-        .setFooter({ text: 'Usa /scanpin approve <PIN> para aprobar o /scanpin reject <PIN> para denegar' });
-      channel.send({ embeds: [emb] }).catch(err => console.error('notifyPinRequest send error:', err.message));
-    } catch (e) { console.error('notifyPinRequest error:', e.message); }
+  const discordTime = (iso) => {
+    const t = iso ? Math.floor(new Date(iso).getTime() / 1000) : NaN;
+    return isNaN(t) ? '—' : `<t:${t}:R>`;
+  };
+
+  // Destinos de los PINs: MD al ADMIN_ID y, si esta configurado, el canal de PINs.
+  async function pinTargets() {
+    const out = [];
+    if (ADMIN_ID) {
+      try { out.push(await client.users.fetch(ADMIN_ID)); } catch (e) { console.error('[pin] No se pudo obtener ADMIN_ID:', e.message); }
+    }
+    const cfg = GUILD_ID ? getOne('SELECT pin_channel FROM guild_config WHERE guild_id = ?', [GUILD_ID]) : null;
+    if (cfg && cfg.pin_channel) {
+      try { out.push(await client.channels.fetch(cfg.pin_channel)); } catch (e) { console.error('[pin] Canal de PINs no accesible:', e.message); }
+    }
+    return out;
   }
 
-  function notifyPinResult(pinRow, kind) {
-    if (!GUILD_ID || !pinRow) return;
-    const cfg = getOne('SELECT pin_channel, scan_logs_channel FROM guild_config WHERE guild_id = ?', [GUILD_ID]);
-    const chId = (cfg && cfg.pin_channel) || (cfg && cfg.scan_logs_channel);
-    if (!chId) return;
-    const channel = client.channels.cache.get(chId);
-    if (!channel) return;
-    try {
-      const approved = kind === 'approved';
-      const emb = new EmbedBuilder()
-        .setTitle(approved ? '✅ PIN APROBADO' : '🚫 PIN RECHAZADO')
-        .setColor(approved ? 0x3DDC84 : 0xFF3B3B)
-        .setTimestamp()
-        .addFields(
-          { name: 'PIN', value: `\`${pinRow.pin}\``, inline: true },
-          { name: 'Por', value: `<@${approved ? pinRow.approved_by : (pinRow.rejected_by || '0')}>`, inline: true },
-          { name: 'Motivo', value: (!approved && pinRow.reject_reason) ? pinRow.reject_reason : '—', inline: true }
-        );
-      channel.send({ embeds: [emb] }).catch(err => console.error('notifyPinResult send error:', err.message));
-    } catch (e) { console.error('notifyPinResult error:', e.message); }
+  async function sendToTargets(payload) {
+    let sent = 0;
+    for (const t of await pinTargets()) {
+      try { await t.send(Object.assign({ allowedMentions: { parse: [] } }, payload)); sent++; }
+      catch (e) { console.error('[pin] Envio fallido:', e.message); }
+    }
+    return sent > 0;
   }
 
-  // Exponer notificaciones al servidor Express (app)
-  if (app && typeof app === 'object') {
-    app._notifyPinRequest = notifyPinRequest;
+  async function sendPinToDiscord(row) {
+    if (!client.isReady()) return false;
+    const emb = new EmbedBuilder()
+      .setTitle('🔐 Nueva solicitud de escaneo')
+      .setColor(0xFFFFFF)
+      .setDescription(`# \`${row.pin}\`\nDale este PIN a la persona que vas a escanear para que lo escriba en Noxxer.`)
+      .addFields(
+        { name: 'Nombre', value: row.username || '—', inline: true },
+        { name: 'IP', value: row.ip || '—', inline: true },
+        { name: 'Caduca', value: discordTime(row.expires_at), inline: true },
+        { name: 'HWID', value: row.hwid ? `\`${String(row.hwid).slice(0, 40)}\`` : '—', inline: false }
+      )
+      .setFooter({ text: 'Un solo uso • 5 intentos • /scanpin revoke <PIN> para anularlo' })
+      .setTimestamp();
+    return sendToTargets({ embeds: [emb] });
+  }
+
+  function notifyPinEvent(row, kind) {
+    if (!client.isReady() || !row) return;
+    const verified = kind === 'verified';
+    const emb = new EmbedBuilder()
+      .setColor(verified ? 0x3DDC84 : 0xFF3B3B)
+      .setDescription(verified
+        ? `✅ PIN \`${row.pin}\` verificado${row.username ? ` por **${row.username}**` : ''}. El escaneo puede empezar.`
+        : `🔒 PIN \`${row.pin}\` bloqueado por demasiados intentos fallidos${row.ip ? ` (IP ${row.ip})` : ''}.`)
+      .setTimestamp();
+    sendToTargets({ embeds: [emb] }).catch(() => {});
+  }
+
+  if (app && app.locals) {
+    app.locals.sendPinToDiscord = sendPinToDiscord;
+    app.locals.notifyPinEvent = notifyPinEvent;
   }
 
   client.login(TOKEN);

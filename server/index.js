@@ -41,15 +41,36 @@ function printListenInfo(port) {
 Database.init().then((db) => {
   const {
     run, getOne, getAll, hashPassword, verifyPassword, getActiveUserFromLicense, isLicenseValid,
-    createPin, getPin, listPendingPins, approvePin, rejectPin
+    createPinRequest, deletePin, verifyPin, findScanToken, markPinUsed
   } = db;
 
+  // X-Forwarded-For solo es fiable detras de un proxy propio (nginx, Cloudflare...): TRUST_PROXY=1
+  const TRUST_PROXY = process.env.TRUST_PROXY === '1';
   function getClientIp(req) {
-    const fwd = req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip']);
-    if (fwd) return String(fwd).split(',')[0].trim();
-    if (req.socket && req.socket.remoteAddress) return req.socket.remoteAddress;
-    return null;
+    if (TRUST_PROXY) {
+      const fwd = req.headers && (req.headers['x-forwarded-for'] || req.headers['x-real-ip']);
+      if (fwd) return String(fwd).split(',')[0].trim();
+    }
+    const a = req.socket && req.socket.remoteAddress;
+    return a ? String(a).replace(/^::ffff:/, '') : null;
   }
+
+  // Limite de peticiones en memoria: max hits por clave dentro de la ventana
+  const hits = new Map();
+  function limited(key, max, windowMs) {
+    const now = Date.now();
+    const list = (hits.get(key) || []).filter(t => now - t < windowMs);
+    if (list.length >= max) { hits.set(key, list); return true; }
+    list.push(now);
+    hits.set(key, list);
+    return false;
+  }
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, list] of hits) if (!list.length || now - list[list.length - 1] > 60 * 60 * 1000) hits.delete(k);
+  }, 10 * 60 * 1000).unref();
+
+  const cleanName = (v) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f`*_~|<>@#]/g, '').trim().slice(0, 32) : '') || null;
 
   app.get('/', (req, res) => {
     res.json({ ok: true, service: 'Noxxer Licensing', time: new Date().toISOString() });
@@ -182,27 +203,24 @@ Database.init().then((db) => {
   });
 
   app.post('/api/scans/submit', requireJson, (req, res) => {
-    const { username, licenseKey, pin, hwid, startedAt, endedAt, totalHigh, totalMed, totalLow, verdict, durationSec, findings } = req.body || {};
-    const hasLicense = !!username && !!licenseKey;
-    const hasPin = !!pin;
-    if (!hasLicense && !hasPin) return res.status(400).json({ ok: false, error: 'Faltan datos: se requiere licencia o PIN aprobado' });
+    const { username, licenseKey, token, hwid, startedAt, endedAt, totalHigh, totalMed, totalLow, verdict, durationSec, findings } = req.body || {};
+    const hasLicense = typeof username === 'string' && typeof licenseKey === 'string' && !!username && !!licenseKey;
+    if (!token && !hasLicense) return res.status(400).json({ ok: false, error: 'Faltan datos: se requiere un PIN verificado' });
 
     let userId = null;
     let finalUser = null;
-    let finalHwid = hwid ? String(hwid).trim().slice(0, 512) : null;
-    let scanPinId = null;
+    let finalHwid = typeof hwid === 'string' ? hwid.trim().slice(0, 512) : null;
+    let pinRow = null;
 
-    if (hasPin) {
-      const cleanPin = String(pin).trim().toUpperCase();
-      const p = getOne('SELECT * FROM pins WHERE pin = ?', [cleanPin]);
-      if (!p) return res.status(404).json({ ok: false, error: 'PIN no encontrado' });
-      if (p.status !== 'approved') return res.status(403).json({ ok: false, error: 'PIN no aprobado. Estado: ' + (p.status || 'unknown') });
-      finalUser = (username && typeof username === 'string') ? String(username).trim().slice(0, 48) : (p.username || ('user-pin-' + cleanPin));
-      if (!finalHwid && p.hwid) finalHwid = String(p.hwid).trim().slice(0, 512);
-      scanPinId = p.id;
+    if (token) {
+      const t = findScanToken(token, finalHwid);
+      if (t.error) return res.status(403).json({ ok: false, error: t.error });
+      pinRow = t.row;
+      finalUser = pinRow.username || 'Sin nombre';
+      finalHwid = pinRow.hwid || finalHwid;
     } else {
-      const cleanUser = String(username).trim();
-      const cleanKey = String(licenseKey).trim().toUpperCase();
+      const cleanUser = username.trim();
+      const cleanKey = licenseKey.trim().toUpperCase();
       finalUser = cleanUser;
       const lic = getOne('SELECT * FROM licenses WHERE key = ?', [cleanKey]);
       if (!lic || !lic.user_id) return res.status(404).json({ ok: false, error: 'Licencia invalida' });
@@ -227,79 +245,68 @@ Database.init().then((db) => {
         verdict || null,
         findingsText
       ]);
-      const scanId = info.lastInsertRowid;
-      if (scanPinId) {
-        try { run('UPDATE pins SET scan_id = ? WHERE id = ?', [scanId, scanPinId]); } catch {}
+      if (info.error) {
+        console.error('Scan submit error:', info.error);
+        return res.status(500).json({ ok: false, error: 'No se pudo guardar el escaneo' });
       }
+      const scanId = info.lastInsertRowid;
+      if (pinRow) markPinUsed(pinRow.id, scanId);
       return res.json({ ok: true, id: scanId });
     } catch (e) {
       console.error('Scan submit error:', e);
-      return res.status(500).json({ ok: false, error: e.message });
+      return res.status(500).json({ ok: false, error: 'No se pudo guardar el escaneo' });
     }
   });
 
   // ------------------------------------------------------------------
-  //  SISTEMA DE PINS (NO LOGIN)
+  //  SISTEMA DE PINS
+  //  1. El cliente pide un PIN: el servidor lo genera y lo manda SOLO a Discord.
+  //  2. El admin le dice el PIN a la persona y esta lo escribe en la app.
+  //  3. /verifypin lo canjea por un token de un solo uso para subir el escaneo.
   // ------------------------------------------------------------------
-  app.post('/api/auth/requestpin', requireJson, (req, res) => {
+  app.post('/api/auth/requestpin', requireJson, async (req, res) => {
     const { hwid, username } = req.body || {};
-    if (hwid && typeof hwid === 'string' && hwid.length > 2000)
-      return res.status(400).json({ ok: false, error: 'HWID invalido (demasiado largo)' });
+    if (typeof hwid !== 'string' || !/^[A-Za-z0-9-]{8,128}$/.test(hwid))
+      return res.status(400).json({ ok: false, error: 'HWID invalido' });
 
     const ip = getClientIp(req);
-    const cleanUser = username && typeof username === 'string' ? username.trim().slice(0, 48) : null;
-    const cleanHwid = hwid ? String(hwid).trim().slice(0, 512) : null;
+    if (limited('req-ip:' + ip, 5, 10 * 60 * 1000) || limited('req-hwid:' + hwid, 3, 10 * 60 * 1000))
+      return res.status(429).json({ ok: false, error: 'Demasiadas solicitudes. Espera unos minutos.' });
 
-    const p = createPin(cleanHwid, ip, cleanUser);
-    if (!p || !p.pin) return res.status(500).json({ ok: false, error: 'No se pudo generar el pin' });
+    const send = app.locals.sendPinToDiscord;
+    if (typeof send !== 'function')
+      return res.status(503).json({ ok: false, error: 'El bot de Discord no esta activo. Avisa al administrador.' });
 
-    // Notificar al bot por el canal de pins
-    try {
-      if (app._notifyPinRequest) app._notifyPinRequest(p);
-    } catch (e) {}
+    const p = createPinRequest(hwid, ip, cleanName(username));
+    if (!p) return res.status(500).json({ ok: false, error: 'No se pudo generar el PIN' });
 
-    return res.json({
-      ok: true,
-      pin: p.pin,
-      status: p.status,
-      created_at: p.created_at,
-      expires_at: p.expires_at
-    });
+    let delivered = false;
+    try { delivered = await send(p); } catch (e) { console.error('sendPinToDiscord:', e && e.message ? e.message : e); }
+    if (!delivered) {
+      deletePin(p.id);
+      return res.status(503).json({ ok: false, error: 'No se pudo enviar el PIN a Discord. Avisa al administrador.' });
+    }
+
+    const expiresIn = Math.max(0, Math.round((new Date(p.expires_at).getTime() - Date.now()) / 1000));
+    return res.json({ ok: true, requestId: p.request_id, expiresIn, expiresAt: p.expires_at });
   });
 
-  app.get('/api/auth/poll/:pin', (req, res) => {
-    const raw = (req.params.pin || '').toUpperCase().trim();
-    if (!/^[A-Z0-9]{4,32}$/.test(raw))
-      return res.status(400).json({ ok: false, error: 'PIN invalido' });
+  app.post('/api/auth/verifypin', requireJson, (req, res) => {
+    const { requestId, pin, hwid } = req.body || {};
+    if (typeof requestId !== 'string' || typeof pin !== 'string')
+      return res.status(400).json({ ok: false, error: 'Faltan datos' });
+    if (limited('verify-ip:' + getClientIp(req), 20, 10 * 60 * 1000))
+      return res.status(429).json({ ok: false, error: 'Demasiados intentos. Espera unos minutos.' });
 
-    const p = getPin(raw);
-    if (!p) return res.status(404).json({ ok: false, error: 'PIN no encontrado' });
-
-    if (p.expires_at) {
-      try {
-        const exp = new Date(p.expires_at);
-        if (new Date() > exp) {
-          return res.json({ ok: true, pin: p.pin, status: 'expired', message: 'El PIN ha expirado. Vuelve a pulsar Request Ping.' });
-        }
-      } catch {}
+    const r = verifyPin(requestId, pin, typeof hwid === 'string' ? hwid : null);
+    const notify = app.locals.notifyPinEvent;
+    if (!r.ok) {
+      if (r.code === 'locked' && r.row && typeof notify === 'function') notify(r.row, 'locked');
+      const status = r.code === 'wrong' ? 401 : r.code === 'not_found' ? 404 : 403;
+      return res.status(status).json({ ok: false, code: r.code, error: r.error, attemptsLeft: r.attemptsLeft == null ? null : r.attemptsLeft });
     }
-
-    if (p.status === 'pending') {
-      return res.json({ ok: true, pin: p.pin, status: 'pending', message: 'Esperando aprobacion del administrador en Discord...' });
-    }
-    if (p.status === 'approved') {
-      return res.json({ ok: true, pin: p.pin, status: 'approved', approved_by: p.approved_by, resolved_at: p.resolved_at });
-    }
-    if (p.status === 'rejected') {
-      return res.json({ ok: true, pin: p.pin, status: 'rejected', rejected_by: p.rejected_by, reason: p.reject_reason || null });
-    }
-    return res.json({ ok: true, pin: p.pin, status: p.status });
-  });
-
-  // Endpoint interno para que el bot acceda a la lista de pins (sin auth, solo API local)
-  app.get('/api/admin/pins/pending', (req, res) => {
-    const rows = listPendingPins(100);
-    return res.json({ ok: true, count: rows.length, pins: rows });
+    if (typeof notify === 'function') notify(r.row, 'verified');
+    return res.json({ ok: true, token: r.token, expiresIn: r.expiresIn });
   });
 
   let actualPort = PORT;

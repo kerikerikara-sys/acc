@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const initSqlJs = require('sql.js');
 
@@ -17,6 +18,59 @@ const generateKey = () => {
   }
   return s;
 };
+
+function columnsOf(db, table) {
+  const r = db.exec(`PRAGMA table_info(${table})`);
+  if (!r.length) return {};
+  const out = {};
+  for (const v of r[0].values) out[v[1]] = { notnull: v[3] };
+  return out;
+}
+
+// Bases creadas con versiones anteriores: CREATE TABLE IF NOT EXISTS no las toca.
+function migrate(db) {
+  const gc = columnsOf(db, 'guild_config');
+  if (!gc.pin_channel) db.exec('ALTER TABLE guild_config ADD COLUMN pin_channel TEXT');
+
+  const pins = columnsOf(db, 'pins');
+  const pinCols = {
+    request_id: 'TEXT', attempts: 'INTEGER DEFAULT 0', token: 'TEXT', token_expires_at: 'TEXT',
+    verified_at: 'TEXT', used_at: 'TEXT'
+  };
+  for (const c of Object.keys(pinCols)) {
+    if (!pins[c]) db.exec(`ALTER TABLE pins ADD COLUMN ${c} ${pinCols[c]}`);
+  }
+
+  // Los escaneos con PIN no tienen usuario: user_id debe admitir NULL.
+  const scans = columnsOf(db, 'scans');
+  if (scans.user_id && scans.user_id.notnull) {
+    const cols = 'id, user_id, username, hwid, started_at, ended_at, duration_sec, total_high, total_med, total_low, verdict, findings_json, reported_to_discord, created_at';
+    db.exec(`
+      BEGIN;
+      CREATE TABLE scans_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT NOT NULL,
+        hwid TEXT,
+        started_at TEXT,
+        ended_at TEXT,
+        duration_sec INTEGER,
+        total_high INTEGER DEFAULT 0,
+        total_med INTEGER DEFAULT 0,
+        total_low INTEGER DEFAULT 0,
+        verdict TEXT,
+        findings_json TEXT,
+        reported_to_discord INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO scans_new (${cols}) SELECT ${cols} FROM scans;
+      DROP TABLE scans;
+      ALTER TABLE scans_new RENAME TO scans;
+      COMMIT;
+    `);
+    console.log('[db] Migrada tabla scans: user_id ahora admite NULL');
+  }
+}
 
 async function init() {
   const SQL = await initSqlJs();
@@ -63,7 +117,7 @@ async function init() {
     );
     CREATE TABLE IF NOT EXISTS scans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
+      user_id INTEGER,
       username TEXT NOT NULL,
       hwid TEXT,
       started_at TEXT,
@@ -88,20 +142,31 @@ async function init() {
     CREATE TABLE IF NOT EXISTS pins (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       pin TEXT UNIQUE NOT NULL,
+      request_id TEXT,
       hwid TEXT,
       ip TEXT,
       username TEXT,
-      status TEXT DEFAULT 'pending',
+      status TEXT DEFAULT 'issued',
+      attempts INTEGER DEFAULT 0,
+      token TEXT,
+      token_expires_at TEXT,
       approved_by TEXT,
       rejected_by TEXT,
       reject_reason TEXT,
       scan_id INTEGER,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      verified_at TEXT,
+      used_at TEXT,
       resolved_at TEXT,
       expires_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_pins_pin ON pins(pin);
     CREATE INDEX IF NOT EXISTS idx_pins_status ON pins(status);
+  `);
+  migrate(db);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pins_request ON pins(request_id);
+    CREATE INDEX IF NOT EXISTS idx_pins_token ON pins(token);
   `);
   dirty = true;
 
@@ -203,61 +268,124 @@ async function init() {
     return { ok: true, remaining: Math.max(0, Math.ceil((exp - now) / (1000 * 60 * 60 * 24))) };
   }
 
+  // ------------------------------------------------------------------
+  //  PINs de escaneo: el cliente pide uno, el PIN llega SOLO a Discord,
+  //  el admin se lo dicta a la persona y el cliente lo canjea por un token
+  //  de un solo uso con el que sube el resultado del escaneo.
+  // ------------------------------------------------------------------
   const PIN_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const PIN_LENGTH = 8;
+  const PIN_TTL_MS = 10 * 60 * 1000;
+  const PIN_MAX_ATTEMPTS = 5;
+  const TOKEN_TTL_MS = 3 * 60 * 60 * 1000;
 
   function generatePin() {
     let s = '';
-    for (let i = 0; i < PIN_LENGTH; i++) s += PIN_CHARS[Math.floor(Math.random() * PIN_CHARS.length)];
+    for (let i = 0; i < PIN_LENGTH; i++) s += PIN_CHARS[crypto.randomInt(PIN_CHARS.length)];
     return s;
   }
 
-  function createPin(hwid, ip, username) {
-    const pin = generatePin();
-    const now = new Date();
-    const expires = new Date(now.getTime() + 15 * 60 * 1000);
-    run(
-      'INSERT INTO pins (pin, hwid, ip, username, status, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [pin, hwid || null, ip || null, username || null, 'pending', expires.toISOString()]
-    );
-    return getOne('SELECT * FROM pins WHERE pin = ?', [pin]);
+  function sameText(a, b) {
+    const x = Buffer.from(String(a));
+    const y = Buffer.from(String(b));
+    return x.length === y.length && crypto.timingSafeEqual(x, y);
+  }
+
+  function isExpired(iso) {
+    if (!iso) return false;
+    const t = new Date(iso).getTime();
+    return !isNaN(t) && Date.now() > t;
+  }
+
+  function createPinRequest(hwid, ip, username) {
+    const requestId = crypto.randomBytes(16).toString('hex');
+    const expires = new Date(Date.now() + PIN_TTL_MS).toISOString();
+    for (let tries = 0; tries < 5; tries++) {
+      const r = run(
+        'INSERT INTO pins (pin, request_id, hwid, ip, username, status, attempts, expires_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)',
+        [generatePin(), requestId, hwid || null, ip || null, username || null, 'issued', expires]
+      );
+      if (!r.error) return getOne('SELECT * FROM pins WHERE request_id = ?', [requestId]);
+    }
+    return null;
+  }
+
+  function deletePin(id) {
+    run('DELETE FROM pins WHERE id = ?', [id]);
   }
 
   function getPin(pin) {
     return getOne('SELECT * FROM pins WHERE pin = ?', [(pin || '').toUpperCase().trim()]);
   }
 
-  function listPendingPins(limit) {
-    const rows = getAll(
-      `SELECT * FROM pins WHERE status = 'pending' AND (expires_at IS NULL OR expires_at > ?) ORDER BY created_at DESC LIMIT ?`,
-      [new Date().toISOString(), limit || 50]
-    );
-    return rows;
+  // Devuelve { ok, token, row } o { ok:false, code, error, attemptsLeft? }
+  function verifyPin(requestId, pin, hwid) {
+    const row = getOne('SELECT * FROM pins WHERE request_id = ?', [String(requestId || '')]);
+    if (!row) return { ok: false, code: 'not_found', error: 'Solicitud no encontrada. Pide un PIN nuevo.' };
+    if (row.status === 'issued' && isExpired(row.expires_at)) {
+      run("UPDATE pins SET status = 'expired', resolved_at = ? WHERE id = ?", [new Date().toISOString(), row.id]);
+      row.status = 'expired';
+    }
+    if (row.status === 'expired') return { ok: false, code: 'expired', error: 'El PIN ha caducado. Pide uno nuevo.' };
+    if (row.status === 'revoked') return { ok: false, code: 'revoked', error: 'El administrador ha anulado este PIN.' };
+    if (row.status === 'locked') return { ok: false, code: 'locked', error: 'Demasiados intentos fallidos. Pide un PIN nuevo.' };
+    if (row.status !== 'issued') return { ok: false, code: 'used', error: 'Este PIN ya se ha usado. Pide uno nuevo.' };
+    if (row.hwid && hwid !== row.hwid) return { ok: false, code: 'hwid', error: 'Este PIN se pidio desde otro equipo.' };
+
+    const typed = String(pin || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!sameText(typed, row.pin)) {
+      const attempts = (row.attempts || 0) + 1;
+      const locked = attempts >= PIN_MAX_ATTEMPTS;
+      run('UPDATE pins SET attempts = ?, status = ?, resolved_at = ? WHERE id = ?',
+        [attempts, locked ? 'locked' : 'issued', locked ? new Date().toISOString() : null, row.id]);
+      if (locked) return { ok: false, code: 'locked', error: 'PIN incorrecto. Demasiados intentos: pide un PIN nuevo.', row };
+      return { ok: false, code: 'wrong', error: 'PIN incorrecto.', attemptsLeft: PIN_MAX_ATTEMPTS - attempts };
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const now = new Date();
+    run("UPDATE pins SET status = 'verified', token = ?, token_expires_at = ?, verified_at = ? WHERE id = ?",
+      [token, new Date(now.getTime() + TOKEN_TTL_MS).toISOString(), now.toISOString(), row.id]);
+    return { ok: true, token, expiresIn: Math.floor(TOKEN_TTL_MS / 1000), row: getOne('SELECT * FROM pins WHERE id = ?', [row.id]) };
   }
 
-  function approvePin(pin, by) {
-    const now = new Date().toISOString();
-    run(
-      `UPDATE pins SET status = 'approved', approved_by = ?, resolved_at = ? WHERE pin = ? AND status = 'pending'`,
-      [by || null, now, (pin || '').toUpperCase().trim()]
-    );
-    return getPin(pin);
+  // Token valido y sin usar -> fila del PIN; si no, { error }
+  function findScanToken(token, hwid) {
+    if (!token || typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return { error: 'Token invalido' };
+    const row = getOne('SELECT * FROM pins WHERE token = ?', [token]);
+    if (!row) return { error: 'Token invalido' };
+    if (row.status !== 'verified') return { error: 'Este token ya se ha usado o fue anulado' };
+    if (isExpired(row.token_expires_at)) return { error: 'El token ha caducado' };
+    if (row.hwid && hwid && hwid !== row.hwid) return { error: 'El token pertenece a otro equipo' };
+    return { row };
   }
 
-  function rejectPin(pin, by, reason) {
+  function markPinUsed(id, scanId) {
+    run("UPDATE pins SET status = 'used', used_at = ?, scan_id = ? WHERE id = ?", [new Date().toISOString(), scanId, id]);
+  }
+
+  function listActivePins(limit) {
+    return getAll(
+      `SELECT * FROM pins WHERE (status = 'issued' AND expires_at > ?) OR (status = 'verified' AND token_expires_at > ?)
+       ORDER BY id DESC LIMIT ?`,
+      [new Date().toISOString(), new Date().toISOString(), limit || 25]
+    );
+  }
+
+  function revokePin(pin, by, reason) {
     const now = new Date().toISOString();
-    run(
-      `UPDATE pins SET status = 'rejected', rejected_by = ?, reject_reason = ?, resolved_at = ? WHERE pin = ? AND status = 'pending'`,
+    const r = run(
+      `UPDATE pins SET status = 'revoked', rejected_by = ?, reject_reason = ?, resolved_at = ? WHERE pin = ? AND status IN ('issued', 'verified')`,
       [by || null, reason || null, now, (pin || '').toUpperCase().trim()]
     );
-    return getPin(pin);
+    return r.changes > 0 ? getPin(pin) : null;
   }
 
   const ctx = {
     SQL, db, save, run, getOne, getAll,
     hashPassword, verifyPassword, generateKey, generatePin,
     createLicense, getActiveUserFromLicense, isLicenseValid,
-    createPin, getPin, listPendingPins, approvePin, rejectPin
+    createPinRequest, deletePin, getPin, verifyPin, findScanToken, markPinUsed, listActivePins, revokePin
   };
   save();
   return ctx;
