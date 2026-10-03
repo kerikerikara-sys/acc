@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Noxer — Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bai+Jamjuree:wght@600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root{
+        --bg:#08080c; --panel:#101019; --border:#1e1e2b; --text:#eef0f6;
+        --muted:#9aa0b4; --blue:#2f67f6; --blue-2:#6571ff;
+        --grad:linear-gradient(135deg,#6571ff,#2f67f6 55%,#095af2);
+        --ok:#4ade80; --err:#ff8a8a;
+      }
+      *{box-sizing:border-box}
+      body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+        font-family:"Inter",system-ui,sans-serif;display:grid;place-items:center;padding:24px}
+      body::before{content:"";position:fixed;inset:0;pointer-events:none;
+        background:radial-gradient(600px 400px at 50% -10%,rgba(47,103,246,.25),transparent 65%)}
+      .card{position:relative;width:100%;max-width:460px;background:var(--panel);
+        border:1px solid var(--border);border-radius:18px;padding:34px 30px;
+        box-shadow:0 40px 100px rgba(0,0,0,.6)}
+      .brand{display:flex;align-items:center;gap:11px;margin-bottom:6px}
+      .brand svg{width:30px;height:30px}
+      .brand h1{font-family:"Bai Jamjuree";font-size:21px;margin:0}
+      .sub{color:var(--muted);font-size:14px;margin:0 0 26px}
+      label{display:block;font-size:13.5px;color:var(--muted);margin:16px 0 7px;font-weight:500}
+      input{width:100%;background:#0b0b12;border:1px solid var(--border);border-radius:11px;
+        color:var(--text);font-family:inherit;font-size:15px;padding:12px 14px;outline:none;transition:border-color .2s}
+      input:focus{border-color:var(--blue)}
+      button{width:100%;margin-top:22px;background:var(--grad);color:#fff;border:0;border-radius:11px;
+        font-family:inherit;font-weight:600;font-size:15px;padding:13px;cursor:pointer;
+        box-shadow:0 8px 28px rgba(47,103,246,.4);transition:transform .15s,opacity .2s}
+      button:hover{transform:translateY(-1px)} button:disabled{opacity:.6;cursor:default;transform:none}
+      button.ghost{background:transparent;border:1px solid var(--border);box-shadow:none;color:var(--muted)}
+      .msg{margin-top:16px;font-size:13.5px;min-height:18px}
+      .msg.ok{color:var(--ok)} .msg.err{color:var(--err)}
+      .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}
+      .row .who{font-size:13.5px;color:var(--muted)}
+      .row .who b{color:var(--text)}
+      .row button{width:auto;margin:0;padding:8px 14px;font-size:13px}
+      .section{border-top:1px solid var(--border);margin-top:26px;padding-top:22px}
+      .section h2{font-family:"Bai Jamjuree";font-size:16px;margin:0 0 4px}
+      .section p{color:var(--muted);font-size:13px;margin:0 0 6px}
+      .current{font-size:13px;color:var(--muted);margin-top:10px;word-break:break-all}
+      .current a{color:var(--blue-2)}
+      .hidden{display:none}
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="brand">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#6571ff"/><stop offset=".55" stop-color="#2f67f6"/><stop offset="1" stop-color="#095af2"/>
+          </linearGradient></defs>
+          <path d="M24 3L6 10v12c0 11.3 7.7 18.9 18 23 10.3-4.1 18-11.7 18-23V10L24 3z" stroke="url(#g)" stroke-width="2" fill="none"/>
+          <path d="M17 24.5l4.8 4.8L32 19" stroke="url(#g)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <h1>Noxer</h1>
+      </div>
+
+      <!-- LOGIN -->
+      <div id="login-view">
+        <p class="sub">Panel de administracion</p>
+        <form id="login-form" autocomplete="off">
+          <label for="u">Usuario</label>
+          <input id="u" name="u" type="text" autocomplete="username" required />
+          <label for="p">Contraseña</label>
+          <input id="p" name="p" type="password" autocomplete="current-password" required />
+          <button type="submit" id="login-btn">Entrar</button>
+          <div class="msg" id="login-msg"></div>
+        </form>
+      </div>
+
+      <!-- DASHBOARD -->
+      <div id="dash-view" class="hidden">
+        <div class="row">
+          <div class="who">Conectado como <b id="who"></b></div>
+          <button class="ghost" id="logout-btn">Salir</button>
+        </div>
+
+        <div class="section">
+          <h2>Enlace de descarga</h2>
+          <p>El boton "Descargar" de la web apuntara aqui.</p>
+          <label for="dl">URL del archivo (.exe, release, etc.)</label>
+          <input id="dl" type="url" placeholder="https://..." />
+          <button id="save-btn">Guardar enlace</button>
+          <div class="msg" id="dl-msg"></div>
+          <div class="current" id="dl-current"></div>
+        </div>
+
+        <div class="section">
+          <h2>Cambiar contraseña</h2>
+          <label for="cur">Contraseña actual</label>
+          <input id="cur" type="password" autocomplete="current-password" />
+          <label for="new">Nueva contraseña (min. 8)</label>
+          <input id="new" type="password" autocomplete="new-password" />
+          <button class="ghost" id="pass-btn">Actualizar contraseña</button>
+          <div class="msg" id="pass-msg"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var TOKEN = null;
+      var $ = function (id) { return document.getElementById(id); };
+
+      function api(path, opts) {
+        opts = opts || {};
+        opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+        if (TOKEN) opts.headers["Authorization"] = "Bearer " + TOKEN;
+        return fetch(path, opts).then(function (r) {
+          return r.json().then(function (j) { return { status: r.status, body: j }; });
+        });
+      }
+      function setMsg(el, text, ok) {
+        el.textContent = text || "";
+        el.className = "msg " + (text ? (ok ? "ok" : "err") : "");
+      }
+
+      function showDash(username) {
+        $("login-view").classList.add("hidden");
+        $("dash-view").classList.remove("hidden");
+        $("who").textContent = username;
+        loadDownload();
+      }
+      function showLogin() {
+        TOKEN = null;
+        try { localStorage.removeItem("noxer_admin_token"); } catch (e) {}
+        $("dash-view").classList.add("hidden");
+        $("login-view").classList.remove("hidden");
+      }
+
+      // Login
+      $("login-form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        var btn = $("login-btn"); btn.disabled = true;
+        setMsg($("login-msg"), "", true);
+        api("/api/admin/login", { method: "POST", body: JSON.stringify({ username: $("u").value, password: $("p").value }) })
+          .then(function (r) {
+            btn.disabled = false;
+            if (r.body.ok) {
+              TOKEN = r.body.token;
+              try { localStorage.setItem("noxer_admin_token", TOKEN); } catch (e) {}
+              $("p").value = "";
+              showDash(r.body.username);
+            } else {
+              setMsg($("login-msg"), r.body.error || "Error", false);
+            }
+          })
+          .catch(function () { btn.disabled = false; setMsg($("login-msg"), "No se pudo conectar al servidor", false); });
+      });
+
+      $("logout-btn").addEventListener("click", function () {
+        api("/api/admin/logout", { method: "POST" }).finally(showLogin);
+      });
+
+      // Download link
+      function loadDownload() {
+        api("/api/admin/download").then(function (r) {
+          if (r.status === 401) return showLogin();
+          var url = (r.body && r.body.url) || "";
+          $("dl").value = url;
+          $("dl-current").innerHTML = url
+            ? 'Actual: <a href="' + url.replace(/"/g, "&quot;") + '" target="_blank" rel="noopener">' + url.replace(/</g, "&lt;") + "</a>"
+            : "Actual: (sin enlace configurado)";
+        });
+      }
+      $("save-btn").addEventListener("click", function () {
+        var btn = $("save-btn"); btn.disabled = true;
+        setMsg($("dl-msg"), "", true);
+        api("/api/admin/download", { method: "POST", body: JSON.stringify({ url: $("dl").value }) })
+          .then(function (r) {
+            btn.disabled = false;
+            if (r.status === 401) return showLogin();
+            if (r.body.ok) { setMsg($("dl-msg"), "Enlace guardado", true); loadDownload(); }
+            else setMsg($("dl-msg"), r.body.error || "Error", false);
+          })
+          .catch(function () { btn.disabled = false; setMsg($("dl-msg"), "No se pudo conectar", false); });
+      });
+
+      // Password
+      $("pass-btn").addEventListener("click", function () {
+        var btn = $("pass-btn"); btn.disabled = true;
+        setMsg($("pass-msg"), "", true);
+        api("/api/admin/password", { method: "POST", body: JSON.stringify({ currentPassword: $("cur").value, newPassword: $("new").value }) })
+          .then(function (r) {
+            btn.disabled = false;
+            if (r.body.ok) {
+              setMsg($("pass-msg"), "Contraseña actualizada. Vuelve a iniciar sesion.", true);
+              $("cur").value = ""; $("new").value = "";
+              setTimeout(showLogin, 1500);
+            } else setMsg($("pass-msg"), r.body.error || "Error", false);
+          })
+          .catch(function () { btn.disabled = false; setMsg($("pass-msg"), "No se pudo conectar", false); });
+      });
+
+      // Reanudar sesion si hay token guardado
+      (function () {
+        try { TOKEN = localStorage.getItem("noxer_admin_token"); } catch (e) {}
+        if (!TOKEN) return;
+        api("/api/admin/me").then(function (r) {
+          if (r.body && r.body.ok) showDash(r.body.username); else showLogin();
+        }).catch(showLogin);
+      })();
+    </script>
+  </body>
+</html>

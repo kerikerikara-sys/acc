@@ -16,7 +16,12 @@
         BRAND: "Noxer",
         BRAND_DOMAIN: "noxer.ac",
         DISCORD_URL: "#",
-        DOWNLOAD_URL: "#"
+        // Enlace de descarga por defecto (se usa si el servidor no responde).
+        DOWNLOAD_URL: "#",
+        // Base del servidor/API donde corre index.js. Dejalo vacio ("") si la
+        // web se sirve desde el mismo servidor; si la web esta en otro hosting,
+        // pon aqui la URL del servidor, p.ej. "https://api.noxer.ac".
+        API_BASE: ""
       };
     </script>
 
@@ -503,7 +508,22 @@
         document.querySelectorAll("[data-brand-title]").forEach(function (el) { el.textContent = S.BRAND + " — scanner"; });
         document.title = S.BRAND + " — Deteccion de cheats y screenshare para FiveM";
         document.querySelectorAll("[data-discord]").forEach(function (el) { el.href = S.DISCORD_URL || "#"; });
-        document.querySelectorAll("[data-download]").forEach(function (el) { el.href = S.DOWNLOAD_URL || "#"; });
+
+        function setDownload(url) {
+          document.querySelectorAll("[data-download]").forEach(function (el) {
+            el.href = url || "#";
+            if (url) el.setAttribute("target", "_blank"), el.setAttribute("rel", "noopener");
+          });
+        }
+        setDownload(S.DOWNLOAD_URL && S.DOWNLOAD_URL !== "#" ? S.DOWNLOAD_URL : "");
+
+        // Pide al servidor el enlace de descarga configurado desde el panel.
+        var base = (S.API_BASE || "").replace(/\/+$/, "");
+        fetch(base + "/api/download")
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) { if (j && j.ok && j.url) setDownload(j.url); })
+          .catch(function () {});
+
         var y = document.getElementById("year"); if (y) y.textContent = new Date().getFullYear();
       })();
     </script>

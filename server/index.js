@@ -2,11 +2,17 @@ require('dotenv').config();
 const os = require('os');
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const Database = require('./database.js');
+const mountAdmin = require('./admin.js');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Sitio web de marketing (carpeta web/ en la raiz del repo) servido en /site,
+// y sus archivos sueltos. El panel de admin se monta mas abajo en /admin.
+app.use('/site', express.static(path.join(__dirname, '..', 'web')));
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -54,6 +60,9 @@ Database.init().then((db) => {
   app.get('/', (req, res) => {
     res.json({ ok: true, service: 'Noxxer Licensing', time: new Date().toISOString() });
   });
+
+  // Panel de admin + endpoints del enlace de descarga.
+  mountAdmin(app, db);
 
   const requireJson = (req, res, next) => {
     if (!req.is('json')) return res.status(400).json({ ok: false, error: 'Body JSON requerido' });
