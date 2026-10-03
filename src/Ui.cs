@@ -354,7 +354,7 @@ namespace Noxxer
         public MainWindow()
         {
             Title = "AC Noxxer";
-            Width = 1100; Height = 720;
+            Width = 1100; Height = 800;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanMinimize;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -1192,7 +1192,7 @@ namespace Noxxer
                 case 0: sz = new Size(660, 500); break;
                 case 1: sz = new Size(660, 410); break;
                 case 4: sz = new Size(960, 610); break;
-                case 5: sz = new Size(660, 560); break;
+                case 5: sz = new Size(660, 720); break;
                 default: sz = new Size(660, 500); break;
             }
             cardWrap.BeginAnimation(WidthProperty, Anim(cardWrap.ActualWidth > 0 ? cardWrap.ActualWidth : cardWrap.Width, sz.Width, 520, true));

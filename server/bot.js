@@ -28,7 +28,7 @@ module.exports = function start(db, app) {
     if (ADMIN_ID && String(user.id) === String(ADMIN_ID)) return true;
     if (GUILD_ID) {
       const cfg = getOne('SELECT admin_role FROM guild_config WHERE guild_id = ?', [GUILD_ID]);
-      if (cfg && cfg.admin_role && member && member.roles && member.roles.cache.has(cfg.admin_role)) return true;
+      if (cfg && cfg.admin_role && cfg.admin_role !== GUILD_ID && member && member.roles && member.roles.cache.has(cfg.admin_role)) return true;
     }
     if (member && member.permissions && member.permissions.has(PermissionsBitField.Flags.Administrator)) return true;
     return false;
@@ -173,6 +173,8 @@ module.exports = function start(db, app) {
 
       if (cmd === 'setadminrole') {
         const role = i.options.getRole('rol');
+        // @everyone tiene el mismo id que el servidor: daria permisos de admin a todos los miembros
+        if (!role || role.id === i.guildId) { safeReply(i, '❌ No puedes usar @everyone como rol de admin. Elige un rol propio.', true); return; }
         const existing = getOne('SELECT guild_id FROM guild_config WHERE guild_id = ?', [i.guildId]);
         if (existing) {
           run('UPDATE guild_config SET admin_role = ?, set_by = ?, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ?',
