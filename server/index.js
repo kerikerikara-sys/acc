@@ -1,4 +1,5 @@
-require('dotenv').config();
+// Carga el .env de esta carpeta (server/) aunque se arranque desde otro sitio.
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const os = require('os');
 const express = require('express');
 const cors = require('cors');

@@ -23,11 +23,11 @@ function mountAdmin(app, db) {
   // contraseña solo desde el panel, quita ADMIN_PASSWORD del .env tras el
   // primer arranque.
   const envUser = (process.env.ADMIN_USER || '').trim();
-  const envPass = process.env.ADMIN_PASSWORD || '';
+  const envPass = (process.env.ADMIN_PASSWORD || '').trim();
   if (envUser && envPass) {
     setSetting('admin_user', envUser);
     setSetting('admin_pass_hash', hashPassword(envPass));
-    console.log(`[admin] Credenciales de admin aplicadas desde el entorno: "${envUser}"`);
+    console.log(`[admin] Credenciales de admin aplicadas desde el entorno: "${envUser}" (contraseña de ${envPass.length} caracteres)`);
   } else if (!getSetting('admin_user')) {
     console.warn('[admin] Admin no configurado. Define ADMIN_USER y ADMIN_PASSWORD en el .env y reinicia.');
   }
