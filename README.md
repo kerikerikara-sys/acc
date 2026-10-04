@@ -12,20 +12,24 @@ still runs, marked LIMITED.
 ## What it checks
 | Module | Looks at |
 |---|---|
-| System integrity | Secure Boot, test-signing, cleared event logs, Prefetch state |
-| Memory integrity | Windows Hypervisor-protected Code Integrity (HVCI) configuration |
+| System integrity | Secure Boot, Fast Boot, test-signing, cleared event logs, Prefetch state |
+| Memory integrity | Windows Memory Integrity (HVCI): warning when disabled |
 | DMA hardware | Xilinx / FTDI FT601 / KMBox devices in the PnP tree |
 | Drivers | Known mapper-abused drivers, drivers in user folders |
 | Processes | Names, window titles, unusual DLLs in FiveM/GTA processes |
 | Network connections | Established TCP connections owned by processes that matched existing scan rules |
 | Memory regions | Bounded, read-only signature scan of executable private memory in FiveM/GTA processes |
-| Execution traces | UserAssist, MuiCache, AppCompat, BAM, Prefetch, Recent, Jump lists, Timeline, PowerShell history |
-| Recycle Bin | Deleted file names and dates |
+| Execution traces | Programs executed recently and then deleted (BAM), UserAssist, MuiCache, AppCompat, BAM, Prefetch, Recent, Jump lists, Timeline, PowerShell history |
+| Recycle Bin | Deleted file names and dates, recently modified or emptied bin |
 | File system | File and folder names across the user profile and drives |
 | File contents | Strings inside exe/dll/sys (ASCII + UTF-16) and text/lua/config files |
 | Browsers | Chrome, Edge, Brave, Vivaldi, Opera, Opera GX, Firefox: history, searches, sessions, favicons, cache |
 | Discord | Desktop cache, local storage, IndexedDB (gzip bodies are inflated; author + message extracted) |
 | FiveM | Logs, crash reports, plugins folder, GTA V folder ASI/hooks |
+
+## Look (background and title)
+Put `noxer_bg.jpg` (or `.png`) next to the exe to use your own background photo; the window adds a dark overlay.
+Put your title text on the first line of `noxer_title.txt` (default: `NOXER`).
 
 ## Custom keywords
 Create `noxxer_keywords.txt` next to the exe, one keyword per line.

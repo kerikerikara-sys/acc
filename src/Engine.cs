@@ -450,6 +450,15 @@ namespace Noxxer
             catch { }
             P(1, 5);
 
+            Act("Checking Fast Boot");
+            try
+            {
+                object fb = Registry.GetValue(@"HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Power", "HiberbootEnabled", null);
+                if (fb is int && (int)fb == 1)
+                    Add(1, "System", "Fast Boot", "Fast Boot is enabled", "Fast Boot keeps parts of the previous session alive, so boot-time traces may not reflect a clean start.");
+            }
+            catch { }
+
             if (Admin)
             {
                 Act("Reading boot configuration");
@@ -515,9 +524,9 @@ namespace Noxxer
                 if (enabled is int)
                 {
                     bool on = (int)enabled == 1;
-                    Add(0, "System", "Memory integrity", on ? "HVCI enabled" : "HVCI disabled",
-                        on ? "Hypervisor-protected code integrity is enabled."
-                           : "Hypervisor-protected code integrity is disabled. This setting alone is not evidence of cheating.");
+                    Add(on ? 0 : 1, "System", "Memory integrity", on ? "Memory Integrity is enabled" : "Memory Integrity is disabled",
+                        on ? "Hypervisor-protected code integrity (HVCI) is enabled."
+                           : "Hypervisor-protected code integrity (HVCI) is disabled. This setting alone is not evidence of cheating.");
                 }
                 else
                     Add(0, "System", "Memory integrity", "State unavailable", "Windows did not expose an HVCI configuration value.");
@@ -818,6 +827,24 @@ namespace Noxxer
             }
         }
 
+        // An executable that ran recently (BAM timestamp) and is no longer on disk.
+        void CheckDeletedExecution(string path, byte[] data)
+        {
+            try
+            {
+                if (data == null || data.Length < 8 || !Path.IsPathRooted(path) || File.Exists(path)) return;
+                long ft = BitConverter.ToInt64(data, 0);
+                if (ft <= 0) return;
+                double mins = (DateTime.Now - DateTime.FromFileTime(ft)).TotalMinutes;
+                if (mins < 0 || mins > 60 * 24) return;
+                string ext = Path.GetExtension(path).ToLowerInvariant();
+                if (ext != ".exe" && ext != ".scr" && ext != ".com") return;
+                string ago = mins < 60 ? (int)mins + " min ago" : (int)(mins / 60) + " h ago";
+                Add(1, "Anti-Forensics", "Registry › BAM", Path.GetFileName(path).ToUpperInvariant() + " executed " + ago + " and deleted", path);
+            }
+            catch { }
+        }
+
         void ModTraces()
         {
             // UserAssist
@@ -901,6 +928,7 @@ namespace Noxxer
                                             if (ft > 0) { try { extra = "   ·   last run " + DateTime.FromFileTime(ft).ToString("yyyy-MM-dd HH:mm"); } catch { } }
                                         }
                                         TraceCheck("Registry › BAM", vn, extra);
+                                        CheckDeletedExecution(vn, data);
                                     }
                                 }
                         }
@@ -1003,6 +1031,13 @@ namespace Noxxer
                     }
                     catch { }
                 }
+                try
+                {
+                    double hrs = (DateTime.Now - Directory.GetLastWriteTime(dir)).TotalHours;
+                    if (infos.Length > 0 && hrs < 1)
+                        Add(1, "Anti-Forensics", "Recycle Bin", "Recycle bin modified", "Recycle Bin on " + drive + " was modified " + (int)(hrs * 60) + " min ago.");
+                }
+                catch { }
                 try
                 {
                     if (infos.Length == 0 && (DateTime.Now - Directory.GetLastWriteTime(dir)).TotalHours < 12)
