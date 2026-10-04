@@ -59,6 +59,10 @@ Database.init().then((db) => {
   }
 
   app.get('/', (req, res) => {
+    // Los navegadores piden HTML: les damos la web. El escaner (ACNoxxer.exe)
+    // no manda Accept: text/html y sigue recibiendo el JSON de estado.
+    if ((req.headers.accept || '').includes('text/html'))
+      return res.sendFile(path.join(__dirname, '..', 'web', 'index.html'));
     res.json({ ok: true, service: 'Noxxer Licensing', time: new Date().toISOString() });
   });
 
