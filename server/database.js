@@ -213,7 +213,7 @@ async function init() {
 
   function generatePin() {
     let s = '';
-    for (let i = 0; i < PIN_LENGTH; i++) s += PIN_CHARS[Math.floor(Math.random() * PIN_CHARS.length)];
+    for (let i = 0; i < PIN_LENGTH; i++) s += PIN_CHARS[require('crypto').randomInt(PIN_CHARS.length)];
     return s;
   }
 

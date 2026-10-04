@@ -211,8 +211,13 @@ Database.init().then((db) => {
       const p = getOne('SELECT * FROM pins WHERE pin = ?', [cleanPin]);
       if (!p) return res.status(404).json({ ok: false, error: 'PIN no encontrado' });
       if (p.status !== 'approved') return res.status(403).json({ ok: false, error: 'PIN no aprobado. Estado: ' + (p.status || 'unknown') });
-      finalUser = (username && typeof username === 'string') ? String(username).trim().slice(0, 48) : (p.username || ('user-pin-' + cleanPin));
-      if (!finalHwid && p.hwid) finalHwid = String(p.hwid).trim().slice(0, 512);
+      // El codigo nunca se usa como nombre: es secreto. Solo vale desde el PC que lo pidio y durante 24 h tras aprobarse.
+      if (p.hwid && p.hwid !== finalHwid) return res.status(403).json({ ok: false, error: 'PIN no valido para este equipo' });
+      const resolved = p.resolved_at ? new Date(p.resolved_at) : null;
+      if (!resolved || isNaN(resolved) || Date.now() - resolved.getTime() > 24 * 60 * 60 * 1000)
+        return res.status(403).json({ ok: false, error: 'PIN caducado. Vuelve a pedir un codigo.' });
+      finalUser = p.username || ('Escaneo #' + p.id);
+      userId = 0;   // scans.user_id es NOT NULL: 0 = escaneo por codigo (sin cuenta)
       scanPinId = p.id;
     } else {
       const cleanUser = String(username).trim();
@@ -241,6 +246,10 @@ Database.init().then((db) => {
         verdict || null,
         findingsText
       ]);
+      if (!info || info.error || !info.lastInsertRowid) {
+        console.error('Scan submit: no se pudo guardar el escaneo:', info && info.error);
+        return res.status(500).json({ ok: false, error: 'No se pudo guardar el escaneo en el servidor' });
+      }
       const scanId = info.lastInsertRowid;
       if (scanPinId) {
         try { run('UPDATE pins SET scan_id = ? WHERE id = ?', [scanId, scanPinId]); } catch {}
@@ -255,65 +264,104 @@ Database.init().then((db) => {
   // ------------------------------------------------------------------
   //  SISTEMA DE PINS (NO LOGIN)
   // ------------------------------------------------------------------
-  app.post('/api/auth/requestpin', requireJson, (req, res) => {
+  // Limite de solicitudes de codigo (cada una manda un DM al admin): por IP del socket y global.
+  const pinReqLog = new Map();
+  let pinReqGlobal = [];
+  function pinRequestAllowed(key) {
+    const now = Date.now(), win = 10 * 60 * 1000;
+    pinReqGlobal = pinReqGlobal.filter(t => now - t < win);
+    const mine = (pinReqLog.get(key) || []).filter(t => now - t < win);
+    if (pinReqLog.size > 5000) pinReqLog.clear();
+    if (pinReqGlobal.length >= 30 || mine.length >= 5 || (mine.length && now - mine[mine.length - 1] < 3000)) {
+      pinReqLog.set(key, mine);
+      return false;
+    }
+    mine.push(now); pinReqGlobal.push(now); pinReqLog.set(key, mine);
+    return true;
+  }
+
+  // Flujo del PIN: el cliente pide un codigo, el servidor lo manda por DM privado al admin
+  // (el cliente NUNCA recibe el codigo) y la persona escaneada lo escribe en su ventana.
+  app.post('/api/auth/requestpin', requireJson, async (req, res) => {
     const { hwid, username } = req.body || {};
     if (hwid && typeof hwid === 'string' && hwid.length > 2000)
       return res.status(400).json({ ok: false, error: 'HWID invalido (demasiado largo)' });
+
+    if (!hwid || typeof hwid !== 'string' || hwid.trim().length < 3)
+      return res.status(400).json({ ok: false, error: 'Falta el identificador del equipo' });
+
+    if (!pinRequestAllowed((req.socket && req.socket.remoteAddress) || 'unknown'))
+      return res.status(429).json({ ok: false, error: 'Demasiadas solicitudes de codigo. Espera unos minutos y vuelve a probar.' });
+
+    if (typeof app._notifyPinRequest !== 'function')
+      return res.status(503).json({ ok: false, error: 'El bot de Discord no esta activo en el servidor, asi que no se puede mandar el codigo al admin.' });
 
     const ip = getClientIp(req);
     const cleanUser = username && typeof username === 'string' ? username.trim().slice(0, 48) : null;
     const cleanHwid = hwid ? String(hwid).trim().slice(0, 512) : null;
 
+    // Un solo codigo vivo por equipo: los anteriores sin usar dejan de valer.
+    try { run(`UPDATE pins SET status = 'rejected', reject_reason = 'superseded', resolved_at = ? WHERE hwid = ? AND status = 'pending'`, [new Date().toISOString(), cleanHwid]); } catch {}
+
     const p = createPin(cleanHwid, ip, cleanUser);
     if (!p || !p.pin) return res.status(500).json({ ok: false, error: 'No se pudo generar el pin' });
 
-    // Notificar al bot por el canal de pins
-    try {
-      if (app._notifyPinRequest) app._notifyPinRequest(p);
-    } catch (e) {}
+    let sent = false;
+    try { sent = await app._notifyPinRequest(p); } catch (e) { console.error('notifyPinRequest error:', e && e.message ? e.message : e); }
+    if (!sent) {
+      try { rejectPin(p.pin, 'system', 'dm-failed'); } catch {}
+      return res.status(502).json({ ok: false, error: 'No se pudo mandar el codigo al DM del admin. Revisa ADMIN_ID en el .env y que el admin tenga los mensajes directos abiertos.' });
+    }
 
+    // OJO: no se devuelve el codigo (p.pin) al cliente.
     return res.json({
       ok: true,
-      pin: p.pin,
       status: p.status,
       created_at: p.created_at,
       expires_at: p.expires_at
     });
   });
 
-  app.get('/api/auth/poll/:pin', (req, res) => {
-    const raw = (req.params.pin || '').toUpperCase().trim();
-    if (!/^[A-Z0-9]{4,32}$/.test(raw))
-      return res.status(400).json({ ok: false, error: 'PIN invalido' });
+  // Intentos fallidos por IP real del socket (X-Forwarded-For se puede falsificar).
+  const pinFails = new Map();
+  const PIN_MAX_FAILS = 8, PIN_FAIL_WINDOW_MS = 10 * 60 * 1000;
+  function pinBlocked(key) {
+    const f = pinFails.get(key);
+    if (!f) return false;
+    if (Date.now() - f.t > PIN_FAIL_WINDOW_MS) { pinFails.delete(key); return false; }
+    return f.n >= PIN_MAX_FAILS;
+  }
+  function pinFail(key) {
+    if (pinFails.size > 5000) pinFails.clear();
+    const f = pinFails.get(key);
+    if (!f || Date.now() - f.t > PIN_FAIL_WINDOW_MS) pinFails.set(key, { n: 1, t: Date.now() });
+    else f.n++;
+  }
 
-    const p = getPin(raw);
-    if (!p) return res.status(404).json({ ok: false, error: 'PIN no encontrado' });
+  app.post('/api/auth/verifypin', requireJson, (req, res) => {
+    const { hwid, pin } = req.body || {};
+    const key = (req.socket && req.socket.remoteAddress) || 'unknown';
+    if (pinBlocked(key))
+      return res.status(429).json({ ok: false, error: 'Demasiados intentos fallidos. Espera unos minutos y vuelve a probar.' });
 
-    if (p.expires_at) {
-      try {
-        const exp = new Date(p.expires_at);
-        if (new Date() > exp) {
-          return res.json({ ok: true, pin: p.pin, status: 'expired', message: 'El PIN ha expirado. Vuelve a pulsar Request Ping.' });
-        }
-      } catch {}
-    }
+    const clean = String(pin || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const cleanHwid = hwid ? String(hwid).trim().slice(0, 512) : null;
+    const bad = (msg, status) => {
+      pinFail(key);
+      return res.status(403).json({ ok: false, status: status || 'invalid', error: msg || 'Codigo incorrecto' });
+    };
 
-    if (p.status === 'pending') {
-      return res.json({ ok: true, pin: p.pin, status: 'pending', message: 'Esperando aprobacion del administrador en Discord...' });
-    }
-    if (p.status === 'approved') {
-      return res.json({ ok: true, pin: p.pin, status: 'approved', approved_by: p.approved_by, resolved_at: p.resolved_at });
-    }
-    if (p.status === 'rejected') {
-      return res.json({ ok: true, pin: p.pin, status: 'rejected', rejected_by: p.rejected_by, reason: p.reject_reason || null });
-    }
-    return res.json({ ok: true, pin: p.pin, status: p.status });
-  });
+    if (!/^[A-Z0-9]{8}$/.test(clean)) return bad('Codigo incorrecto');
+    const p = getPin(clean);
+    // Mismo mensaje si no existe o si es de otro PC: no se da pistas.
+    if (!p || (p.hwid && p.hwid !== cleanHwid)) return bad('Codigo incorrecto');
+    if (p.status === 'rejected') return bad('Codigo incorrecto');
+    if (p.expires_at && new Date() > new Date(p.expires_at)) return bad('El codigo ha expirado. Pide uno nuevo.', 'expired');
 
-  // Endpoint interno para que el bot acceda a la lista de pins (sin auth, solo API local)
-  app.get('/api/admin/pins/pending', (req, res) => {
-    const rows = listPendingPins(100);
-    return res.json({ ok: true, count: rows.length, pins: rows });
+    if (p.status === 'pending') approvePin(clean, 'code-entry');
+    const done = getPin(clean);
+    pinFails.delete(key);
+    return res.json({ ok: true, pin: clean, status: done ? done.status : 'approved' });
   });
 
   let actualPort = PORT;

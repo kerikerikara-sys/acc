@@ -27,9 +27,15 @@ still runs, marked LIMITED.
 | Discord | Desktop cache, local storage, IndexedDB (gzip bodies are inflated; author + message extracted) |
 | FiveM | Logs, crash reports, plugins folder, GTA V folder ASI/hooks |
 
+## Access code (admin DM)
+When the scanner opens it asks the server for a code. The server sends the 8-character code **only to the admin by
+Discord private message** (`ADMIN_ID`, plus optional `ADMIN_IDS`, in `server/.env`). The admin dictates it to the person
+being scanned, who types it in the boxes. The code is never shown on the scanned PC and only works on the PC that asked
+for it. It expires after 15 minutes and 8 wrong tries from one IP block further tries for 10 minutes.
+
 ## Look (background and title)
 Put `noxer_bg.jpg` (or `.png`) next to the exe to use your own background photo; the window adds a dark overlay.
-Put your title text on the first line of `noxer_title.txt` (default: `NOXER`).
+Put your title on the first line of `noxer_title.txt` (default: `NOXER`) and the subtitle shown while scanning on the second line (default: `Te está escaneando`).
 
 ## Custom keywords
 Create `noxxer_keywords.txt` next to the exe, one keyword per line.

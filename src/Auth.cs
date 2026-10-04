@@ -369,7 +369,8 @@ namespace Noxxer
                     if (!string.IsNullOrEmpty(pin.Hwid)) body["hwid"] = pin.Hwid;
                 }
                 if (!body.ContainsKey("hwid") || body["hwid"] == null) body["hwid"] = GetHwid();
-                if (!body.ContainsKey("username") || body["username"] == null) body["username"] = "pin:" + (pin != null ? pin.Pin : "anon");
+                // The access code is secret: never send it as a display name.
+                if (!body.ContainsKey("username") || body["username"] == null) body["username"] = "scan";
                 body["startedAt"] = eng.Started.ToString("o");
                 body["endedAt"] = eng.Ended.ToString("o");
                 body["durationSec"] = (int)(eng.Ended - eng.Started).TotalSeconds;
@@ -415,86 +416,30 @@ namespace Noxxer
             catch (Exception ex) { return new PinResult { Ok = false, Error = "Error de conexión: " + ex.Message }; }
         }
 
-        public static PinResult PollApproval(string pin)
+        // The code is never sent to this PC: the admin gets it by private message and dictates it.
+        // The person being scanned types it, and the server confirms it belongs to this device.
+        public static PinResult VerifyPin(string code)
         {
             try
             {
-                string clean = (pin ?? "").Trim().ToUpperInvariant();
-                string json = Request("/api/auth/poll/" + Uri.EscapeDataString(clean), "GET", null);
+                Dictionary<string, object> d = new Dictionary<string, object>();
+                d["hwid"] = GetHwid();
+                d["pin"] = (code ?? "").Trim().ToUpperInvariant();
+                string json = Request("/api/auth/verifypin", "POST", d);
                 PinResult r = new PinResult();
                 r.Ok = ExtractBool(json, "ok");
                 r.Error = ExtractJson(json, "error");
                 r.Status = ExtractJson(json, "status");
-                r.Message = ExtractJson(json, "message");
                 if (r.Ok)
                 {
                     r.Session = new PinSession();
                     r.Session.Pin = ExtractJson(json, "pin");
                     r.Session.Status = r.Status;
-                    r.Session.ApprovedBy = ExtractJson(json, "approved_by");
-                    r.Session.RejectedBy = ExtractJson(json, "rejected_by");
-                    r.Session.ResolvedAt = ExtractJson(json, "resolved_at");
                     r.Session.Hwid = GetHwid();
                 }
                 return r;
             }
             catch (Exception ex) { return new PinResult { Ok = false, Error = "Error de conexión: " + ex.Message }; }
-        }
-
-        public delegate void PollProgressCallback(string statusMsg);
-
-        public static PinResult PollUntilResolved(PinSession session, int timeoutSec = 900, int intervalMs = 3000, PollProgressCallback cb = null, CancellationToken ct = default(CancellationToken))
-        {
-            if (session == null || string.IsNullOrEmpty(session.Pin))
-                return new PinResult { Ok = false, Error = "Sesión PIN no válida" };
-
-            DateTime start = DateTime.Now;
-            while (true)
-            {
-                if (ct.IsCancellationRequested)
-                    return new PinResult { Ok = false, Error = "Cancelado por el usuario" };
-
-                PinResult r = PollApproval(session.Pin);
-                if (!r.Ok) return r;
-
-                if (r.Status == "approved")
-                {
-                    if (r.Session != null)
-                    {
-                        r.Session.Username = session.Username;
-                        r.Session.Hwid = session.Hwid;
-                    }
-                    return r;
-                }
-                if (r.Status == "rejected")
-                {
-                    string reason = ExtractJson(RawLastJson, "reason");
-                    return new PinResult { Ok = false, Error = "Solicitud denegada por el administrador" + (!string.IsNullOrEmpty(reason) ? ": " + reason : ""), Status = "rejected" };
-                }
-                if (r.Status == "expired")
-                {
-                    return new PinResult { Ok = false, Error = r.Message ?? "El PIN ha expirado. Vuelve a pulsar Request Ping.", Status = "expired" };
-                }
-                if (r.Status == "pending")
-                {
-                    string msg = r.Message ?? "Esperando aprobación en Discord...";
-                    TimeSpan elapsed = DateTime.Now - start;
-                    msg += string.Format("  (t={0}s)", (int)elapsed.TotalSeconds);
-                    try { if (cb != null) cb(msg); } catch { }
-                    for (int i = 0; i < intervalMs; i += 200)
-                    {
-                        if (ct.IsCancellationRequested)
-                            return new PinResult { Ok = false, Error = "Cancelado por el usuario" };
-                        Thread.Sleep(200);
-                    }
-                    if ((DateTime.Now - start).TotalSeconds >= timeoutSec)
-                        return new PinResult { Ok = false, Error = "Tiempo de espera agotado. Vuelve a pulsar Request Ping." };
-                }
-                else
-                {
-                    Thread.Sleep(intervalMs);
-                }
-            }
         }
 
         public static AuthResult PingServer()

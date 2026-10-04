@@ -143,7 +143,7 @@ module.exports = function start(db, app) {
       }
 
       // Contestar YA a Discord (3s limite) con deferReply ANTES de cualquier check pesado
-      const ephemeralCmds = new Set(['setscanlogs', 'setadminrole', 'setpinchannel']);
+      const ephemeralCmds = new Set(['setscanlogs', 'setadminrole', 'setpinchannel', 'scanpin']);   // scanpin: respuesta privada
       const cmd = i.commandName;
       let sub = null;
       try { if (i.options && typeof i.options.getSubcommand === 'function') sub = i.options.getSubcommand(); } catch {}
@@ -209,13 +209,13 @@ module.exports = function start(db, app) {
             const hwid = r.hwid ? `[\`${String(r.hwid).slice(0, 14)}…\`]` : '(sin HWID)';
             const ip = r.ip ? `@${r.ip}` : '';
             const user = r.username ? `user: **${r.username}**` : '';
-            return `• **\`${r.pin}\`**  ${hwid}${ip ? ' ' + ip : ''}${user ? ' • ' + user : ''}  (${formatDate(r.created_at)})`;
+            return `• **\`${String(r.pin || '').slice(0, 2)}••••••\`**  ${hwid}${ip ? ' ' + ip : ''}${user ? ' • ' + user : ''}  (${formatDate(r.created_at)})`;
           });
           const emb = new EmbedBuilder()
             .setTitle(`📋 Pins pendientes (${rows.length})`)
             .setColor(0xFFB020)
             .setDescription(lines.join('\n'))
-            .setFooter({ text: 'Usa /scanpin approve <PIN> para aprobarlo' });
+            .setFooter({ text: 'Los codigos completos solo se mandan por DM al admin.' });
           safeReply(i, null, false, emb);
           return;
         }
@@ -226,7 +226,7 @@ module.exports = function start(db, app) {
           if (!existing) { safeReply(i, `❌ PIN \`${pin}\` no encontrado`, false); return; }
           if (existing.status !== 'pending') { safeReply(i, `⚠️ PIN \`${pin}\` ya esta **${existing.status.toUpperCase()}**.`, false); return; }
           const upd = approvePin(pin, String(i.user.id));
-          safeReply(i, `✅ PIN aprobado: **\`${pin}\`** (por <@${i.user.id}>). El cliente podrá comenzar el escaneo.`, false);
+          safeReply(i, `✅ PIN aprobado (por <@${i.user.id}>). El cliente podrá comenzar el escaneo.`, false);
           try { notifyPinResult(upd, 'approved'); } catch {}
           return;
         }
@@ -238,7 +238,7 @@ module.exports = function start(db, app) {
           if (!existing) { safeReply(i, `❌ PIN \`${pin}\` no encontrado`, false); return; }
           if (existing.status !== 'pending') { safeReply(i, `⚠️ PIN \`${pin}\` ya esta **${existing.status.toUpperCase()}**.`, false); return; }
           const upd = rejectPin(pin, String(i.user.id), reason);
-          safeReply(i, `🚫 PIN rechazado: **\`${pin}\`** (por <@${i.user.id}>)${reason ? ` — motivo: ${reason}` : ''}`, false);
+          safeReply(i, `🚫 PIN rechazado (por <@${i.user.id}>)${reason ? ` — motivo: ${reason}` : ''}`, false);
           try { notifyPinResult(upd, 'rejected'); } catch {}
           return;
         }
@@ -420,28 +420,44 @@ module.exports = function start(db, app) {
     console.log('[+] Scan report loop iniciado (c/5s)');
   }
 
-  function notifyPinRequest(pinRow) {
-    if (!GUILD_ID) return;
-    const cfg = getOne('SELECT pin_channel, scan_logs_channel FROM guild_config WHERE guild_id = ?', [GUILD_ID]);
-    const chId = (cfg && cfg.pin_channel) || (cfg && cfg.scan_logs_channel);
-    if (!chId) return;
-    const channel = client.channels.cache.get(chId);
-    if (!channel) return;
-    try {
-      const emb = new EmbedBuilder()
-        .setTitle('📶 NUEVA SOLICITUD DE ESCANEO (PIN)')
-        .setColor(0x5B9DFF)
-        .setTimestamp(pinRow.created_at)
-        .addFields(
-          { name: 'PIN', value: `\`\`\`${pinRow.pin}\`\`\``, inline: false },
-          { name: 'IP', value: pinRow.ip || '—', inline: true },
-          { name: 'HWID', value: pinRow.hwid ? `\`${String(pinRow.hwid).slice(0, 32)}\`` : '—', inline: true },
-          { name: 'Usuario (opcional)', value: pinRow.username || '—', inline: true },
-          { name: 'Expira', value: formatDate(pinRow.expires_at), inline: true }
-        )
-        .setFooter({ text: 'Usa /scanpin approve <PIN> para aprobar o /scanpin reject <PIN> para denegar' });
-      channel.send({ embeds: [emb] }).catch(err => console.error('notifyPinRequest send error:', err.message));
-    } catch (e) { console.error('notifyPinRequest error:', e.message); }
+  // IDs de Discord que reciben el codigo por DM privado: ADMIN_ID (+ ADMIN_IDS opcional, separados por coma).
+  function adminDmIds() {
+    const ids = new Set();
+    if (ADMIN_ID) ids.add(String(ADMIN_ID).trim());
+    String(process.env.ADMIN_IDS || '').split(',').map(x => x.trim()).filter(Boolean).forEach(x => ids.add(x));
+    return [...ids];
+  }
+
+  // Manda el codigo por DM al admin. Devuelve true si al menos un DM salio.
+  // El codigo NO se publica en ningun canal: solo lo ven el admin y, cuando se lo dicte, la persona escaneada.
+  async function notifyPinRequest(pinRow) {
+    const ids = adminDmIds();
+    if (!ids.length) { console.error('[!] ADMIN_ID no esta en el .env: no hay a quien mandar el codigo por DM'); return false; }
+    const code = String(pinRow.pin || '');
+    const shown = code.length === 8 ? code.slice(0, 5) + '-' + code.slice(5) : code;
+    const emb = new EmbedBuilder()
+      .setTitle('🔐 CODIGO DE ESCANEO')
+      .setColor(0x5B9DFF)
+      .setDescription('Alguien ha abierto el escaner y pide un codigo. **Dicta este codigo solo a la persona que vas a escanear**; tiene que escribirlo en su ventana.')
+      .setTimestamp(new Date(pinRow.created_at || Date.now()))
+      .addFields(
+        { name: 'Codigo', value: `\`\`\`${shown}\`\`\``, inline: false },
+        { name: 'IP', value: pinRow.ip || '—', inline: true },
+        { name: 'HWID', value: pinRow.hwid ? `\`${String(pinRow.hwid).slice(0, 32)}\`` : '—', inline: true },
+        { name: 'Expira', value: formatDate(pinRow.expires_at), inline: true }
+      )
+      .setFooter({ text: 'Si no esperabas esta solicitud, ignora este mensaje: sin el codigo nadie puede escanear.' });
+    let sent = 0;
+    for (const id of ids) {
+      try {
+        const user = await client.users.fetch(id);
+        await user.send({ embeds: [emb] });
+        sent++;
+      } catch (e) {
+        console.error(`notifyPinRequest: no se pudo mandar DM a ${id}:`, e && e.message ? e.message : e);
+      }
+    }
+    return sent > 0;
   }
 
   function notifyPinResult(pinRow, kind) {
@@ -458,7 +474,7 @@ module.exports = function start(db, app) {
         .setColor(approved ? 0x3DDC84 : 0xFF3B3B)
         .setTimestamp()
         .addFields(
-          { name: 'PIN', value: `\`${pinRow.pin}\``, inline: true },
+          { name: 'PIN', value: '`••••••••`', inline: true },
           { name: 'Por', value: `<@${approved ? pinRow.approved_by : (pinRow.rejected_by || '0')}>`, inline: true },
           { name: 'Motivo', value: (!approved && pinRow.reject_reason) ? pinRow.reject_reason : '—', inline: true }
         );
@@ -467,7 +483,7 @@ module.exports = function start(db, app) {
   }
 
   // Exponer notificaciones al servidor Express (app)
-  if (app && typeof app === 'object') {
+  if (app && (typeof app === 'object' || typeof app === 'function')) {   // app de Express es una funcion
     app._notifyPinRequest = notifyPinRequest;
   }
 

@@ -50,6 +50,7 @@ namespace Noxxer
         public static readonly Brush Low = Frozen("#5B9DFF");
         public static readonly Brush Ok = Frozen("#3DDC84");
         public static readonly Brush Accent = Frozen("#FFFFFF");
+        public static readonly Brush Teal = Frozen("#3F7373");
         public static readonly Brush Badge = Frozen("#FFFFFF");
 
         public static Brush ForSev(int sev)
@@ -84,7 +85,7 @@ namespace Noxxer
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Button'>
-          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#FFFFFF' BorderThickness='1' Padding='{TemplateBinding Padding}'>
+          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#FFFFFF' BorderThickness='1' CornerRadius='8' Padding='{TemplateBinding Padding}'>
             <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextBlock.Foreground='{TemplateBinding Foreground}'/>
           </Border>
           <ControlTemplate.Triggers>
@@ -118,7 +119,7 @@ namespace Noxxer
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Button'>
-          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#2E2E2E' BorderThickness='1' Padding='{TemplateBinding Padding}'>
+          <Border x:Name='B' Background='{TemplateBinding Background}' BorderBrush='#2E2E2E' BorderThickness='1' CornerRadius='8' Padding='{TemplateBinding Padding}'>
             <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center' TextBlock.Foreground='{TemplateBinding Foreground}'/>
           </Border>
           <ControlTemplate.Triggers>
@@ -259,6 +260,8 @@ namespace Noxxer
         Grid[] views = new Grid[6];
         int view = -1;
 
+        StackPanel progressBox;
+        TextBlock subtitleText;
         TextBlock statusText, pctText, moduleText, activityText, lastHit, resVerdict, resSub;
         Border track, fill;
         Grid trackHost;
@@ -275,16 +278,14 @@ namespace Noxxer
 
         AuthSession session;
         PinSession pinSession;
-        CancellationTokenSource pinCancellation;
 
-        TextBox pinOptionalUser;
+        TextBox pinInput;
         TextBlock[] pinDisplayChars;
-        TextBlock pinMsg, pinStatus, pinBanner;
-        Button pinRequestBtn, pinCancelBtn;
+        TextBlock pinStatus, pinBanner;
+        Button pinRetryBtn;
         Border[] pinBoxes;
         string currentPin;
-        bool pinWaiting;
-        object pinLock = new object();
+        bool pinRequesting, pinVerifying, pinInputBusy;
 
         double shownProg, dHigh, dMed, dLow, dFiles, shimmerX = -80, sweepX, dotPhase;
         DateTime lastFrame = DateTime.Now, lastToast = DateTime.MinValue;
@@ -424,8 +425,8 @@ namespace Noxxer
             return g;
         }
 
-        // Title text: first line of noxer_title.txt next to the exe, otherwise NOXER.
-        static string TitleText()
+        // noxer_title.txt next to the exe: line 1 = big title (default NOXER), line 2 = subtitle shown while scanning.
+        static string TitleLine(int n, string def)
         {
             try
             {
@@ -433,11 +434,11 @@ namespace Noxxer
                 if (File.Exists(f))
                 {
                     string[] l = File.ReadAllLines(f);
-                    if (l.Length > 0 && l[0].Trim().Length > 0) return l[0].Trim();
+                    if (l.Length > n && l[n].Trim().Length > 0) return l[n].Trim();
                 }
             }
             catch { }
-            return "NOXER";
+            return def;
         }
 
         UIElement BuildTitleBar()
@@ -523,7 +524,7 @@ namespace Noxxer
             StackPanel h = new StackPanel { Margin = new Thickness(0, 16, 0, 0) };
 
             StackPanel title = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-            string word = TitleText();
+            string word = TitleLine(0, "NOXER");
             letters = new TextBlock[word.Length];
             for (int i = 0; i < word.Length; i++)
             {
@@ -536,15 +537,20 @@ namespace Noxxer
             }
             h.Children.Add(title);
 
-            // Divider solid 1px
-            
+            subtitleText = TB(TitleLine(1, "Te está escaneando"), 13, Th.Soft, true, "Segoe UI Semibold");
+            subtitleText.HorizontalAlignment = HorizontalAlignment.Center;
+            subtitleText.Margin = new Thickness(0, 10, 0, 0);
+            subtitleText.Visibility = Visibility.Collapsed;
+            h.Children.Add(subtitleText);
+
+            progressBox = new StackPanel { Visibility = Visibility.Collapsed };
 
             Grid pr = new Grid { Margin = new Thickness(110, 18, 110, 3) };
             
             pctText = TB("0%", 10, Th.Muted, false, "Consolas");
             pctText.HorizontalAlignment = HorizontalAlignment.Left;
             pr.Children.Add(pctText);
-            h.Children.Add(pr);
+            progressBox.Children.Add(pr);
 
             trackHost = new Grid { Height = 2, Margin = new Thickness(110, 0, 110, 0), ClipToBounds = true };
             track = new Border { Background = Th.Track };
@@ -557,68 +563,51 @@ namespace Noxxer
             c.Children.Add(shimmer);
             fill.Child = c;
             trackHost.Children.Add(fill);
-            h.Children.Add(trackHost);
+            progressBox.Children.Add(trackHost);
 
             statusText = TB("ready", 11, Th.Muted, false, "Segoe UI");
             statusText.HorizontalAlignment = HorizontalAlignment.Center;
             statusText.Margin = new Thickness(0, 10, 0, 0);
-            h.Children.Add(statusText);
+            statusText.TextTrimming = TextTrimming.CharacterEllipsis;
+            statusText.MaxWidth = 420;
+            progressBox.Children.Add(statusText);
+            h.Children.Add(progressBox);
             return h;
         }
 
         Grid BuildConsent()
         {
-            Grid v = new Grid { Margin = new Thickness(52, 10, 52, 30) };
+            Grid v = new Grid { Margin = new Thickness(48, 0, 48, 14) };
             StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
-            TextBlock t1 = TB("TERMS & PRIVACY", 11, Th.White, true, "Segoe UI Semibold");
+            TextBlock t1 = TB("Términos y privacidad", 24, Th.White, true, "Segoe UI Semibold");
             t1.HorizontalAlignment = HorizontalAlignment.Center;
             sp.Children.Add(t1);
 
-            // divider
-            Border d = new Border { Background = Th.Line, Height = 1, Width = 48, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 18) };
-            sp.Children.Add(d);
-
-            TextBlock t2 = TB("By selecting Accept, you agree to the Terms of Service and Privacy Policy. The scan checks this PC for cheat, DMA, driver, process, file, browser, Discord and FiveM indicators. It also reads executable private memory in FiveM/GTA processes when available.\n\n" +
-                "Sign-in sends your account credentials, license key and a device identifier to the configured server. After a scan, its findings are also submitted there; findings can include process names, file paths and matched text.\n\n" +
-                "Continue only on a device you own or are authorized to inspect.", 12, Th.Muted);
+            TextBlock t2 = TB("Al pulsar Aceptar permites que este programa revise este PC en busca de trampas, hardware DMA, drivers, procesos, archivos, navegadores, Discord y FiveM. Si FiveM o GTA están abiertos, también lee su memoria ejecutable.\n\n" +
+                "Se envían al servidor configurado: el código que te dicte el administrador, un identificador de tu equipo y, al terminar, los hallazgos del escaneo (nombres de procesos, rutas de archivos y texto encontrado).\n\n" +
+                "Continúa solo en un equipo tuyo o que estés autorizado a revisar.", 11.5, Th.Muted);
             t2.TextWrapping = TextWrapping.Wrap;
             t2.TextAlignment = TextAlignment.Center;
-            t2.Margin = new Thickness(0, 0, 0, 0);
-            t2.LineHeight = 20;
+            t2.Margin = new Thickness(0, 14, 0, 0);
+            t2.LineHeight = 18;
             sp.Children.Add(t2);
 
-            TextBlock links = new TextBlock { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0), Foreground = Th.Dim, FontSize = 11 };
-            Hyperlink terms = new Hyperlink(new Run("anticheat.ac/tos")) { NavigateUri = new Uri("https://anticheat.ac/tos"), Foreground = Th.Muted };
-            terms.RequestNavigate += OpenPolicyLink;
-            Hyperlink privacy = new Hyperlink(new Run("anticheat.ac/privacy")) { NavigateUri = new Uri("https://anticheat.ac/privacy"), Foreground = Th.Muted };
-            privacy.RequestNavigate += OpenPolicyLink;
-            links.Inlines.Add(terms);
-            links.Inlines.Add(new Run("        "));
-            links.Inlines.Add(privacy);
-            links.Visibility = Visibility.Collapsed;
-            sp.Children.Add(links);
-
-            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 30, 0, 0) };
-            Button ok = Btn("ACCEPT", "Primary", delegate
+            StackPanel row = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 26, 0, 0) };
+            Button no = Btn("Rechazar", "Ghost", delegate { Close(); });
+            no.Width = 150; no.Margin = new Thickness(0, 0, 12, 0); no.Padding = new Thickness(0, 11, 0, 11);
+            Button ok = Btn("Aceptar", "Primary", delegate
             {
                 consented = true;
                 if (Program.PreviewMode) Show(1);
                 else Show(5);
             });
-            ok.Margin = new Thickness(0, 0, 10, 0);
-            ok.Padding = new Thickness(48, 12, 48, 12);
+            ok.Width = 150; ok.Padding = new Thickness(0, 11, 0, 11);
+            row.Children.Add(no);
             row.Children.Add(ok);
-            row.Children.Add(Btn("DECLINE", "Ghost", delegate { Close(); }));
             sp.Children.Add(row);
             v.Children.Add(sp);
             return v;
-        }
-
-        void OpenPolicyLink(object sender, RequestNavigateEventArgs e)
-        {
-            try { Process.Start(e.Uri.AbsoluteUri); } catch { }
-            e.Handled = true;
         }
 
         Grid BuildIdle()
@@ -671,7 +660,7 @@ namespace Noxxer
         Grid BuildScan()
         {
             Grid v = new Grid { Margin = new Thickness(52, 6, 52, 22) };
-            StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 6, 0, 0) };
+            StackPanel sp = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
             moduleText = TB("", 11, Th.White, true, "Segoe UI Semibold");
             moduleText.HorizontalAlignment = HorizontalAlignment.Center;
@@ -713,6 +702,7 @@ namespace Noxxer
             sp.Children.Add(stopBtn);
 
             moduleText.Visibility = Visibility.Collapsed;
+            activityText.Visibility = Visibility.Collapsed;
             sr.Visibility = Visibility.Collapsed;
             lastHit.Visibility = Visibility.Collapsed;
             foreach (Border pb in pips) pb.Visibility = Visibility.Collapsed;
@@ -847,6 +837,13 @@ namespace Noxxer
 
         void SwitchLoginTab(int tab) { }
 
+        void SetPinStatus(string text, Brush color)
+        {
+            if (pinStatus == null) return;
+            pinStatus.Text = text;
+            pinStatus.Foreground = color;
+        }
+
         void SetPinDisplay(string pin)
         {
             if (pinDisplayChars == null) return;
@@ -859,13 +856,13 @@ namespace Noxxer
                 {
                     tb.Text = currentPin[i].ToString();
                     tb.Foreground = Th.White;
-                    if (box != null) box.BorderBrush = Th.White;
+                    if (box != null) box.BorderBrush = Th.Teal;
                 }
                 else
                 {
                     tb.Text = "";
                     tb.Foreground = Th.Dim;
-                    if (box != null) box.BorderBrush = Th.Line;
+                    if (box != null) box.BorderBrush = (i == currentPin.Length && pinInput != null && pinInput.IsEnabled) ? Th.White : Th.Line;
                 }
             }
         }
@@ -884,12 +881,12 @@ namespace Noxxer
         void ApplyPinBanner(AuthResult r, bool force)
         {
             if (pinBanner == null) return;
-            pinBanner.Text = r.Error ?? "";
+            pinBanner.Text = r.Ok ? "● servidor conectado" : "● sin conexión con el servidor · clic para reintentar";
             pinBanner.Foreground = r.Ok ? Th.Ok : Th.High;
             pinBanner.Cursor = Cursors.Hand;
+            pinBanner.ToolTip = r.Error;
             if (!force)
             {
-                pinBanner.ToolTip = "Haz click para volver a probar la conexión";
                 pinBanner.MouseLeftButtonUp -= BannerRetryClick;
                 pinBanner.MouseLeftButtonUp += BannerRetryClick;
             }
@@ -897,254 +894,175 @@ namespace Noxxer
 
         void BannerRetryClick(object s, MouseButtonEventArgs e)
         {
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                Dispatcher.BeginInvoke(new Action(delegate
-                {
-                    if (pinBanner != null) { pinBanner.Text = "Comprobando conexión..."; pinBanner.Foreground = Th.Muted; pinBanner.Cursor = Cursors.Wait; }
-                }));
-                Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(true); }));
-            });
+            if (pinBanner != null) { pinBanner.Text = "comprobando conexión..."; pinBanner.Foreground = Th.Muted; }
+            UpdatePinBanner(true);
         }
 
         Grid BuildPinAuth()
         {
-            Grid v = new Grid { Margin = new Thickness(40, 0, 40, 16) };
+            Grid v = new Grid { Margin = new Thickness(40, 0, 40, 10) };
             StackPanel root = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
 
-            // Header label
-            TextBlock title = TB("Authentication Required", 15, Th.White, true, "Segoe UI Semibold");
-            title.HorizontalAlignment = HorizontalAlignment.Center;
-            title.Margin = new Thickness(0, 0, 0, 8);
+            StackPanel title = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            TextBlock lockIcon = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 15, Foreground = Th.White, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 1, 10, 0) };
+            title.Children.Add(lockIcon);
+            title.Children.Add(TB("Autenticación requerida", 17, Th.White, true, "Segoe UI Semibold"));
             root.Children.Add(title);
 
-            // Connection status banner
-            pinBanner = TB("Comprobando conexión...", 10.5, Th.Muted, false, "Segoe UI Semibold");
-            pinBanner.TextAlignment = TextAlignment.Center;
-            pinBanner.HorizontalAlignment = HorizontalAlignment.Center;
-            pinBanner.TextWrapping = TextWrapping.Wrap;
-            pinBanner.Margin = new Thickness(0, 0, 0, 18);
-            root.Children.Add(pinBanner);
+            pinStatus = TB("", 11, Th.Muted, false, "Segoe UI");
+            pinStatus.TextAlignment = TextAlignment.Center;
+            pinStatus.HorizontalAlignment = HorizontalAlignment.Center;
+            pinStatus.TextWrapping = TextWrapping.Wrap;
+            pinStatus.MaxWidth = 460;
+            pinStatus.Margin = new Thickness(0, 8, 0, 0);
+            root.Children.Add(pinStatus);
 
-            // PIN card container (solid panel)
-            Border card = new Border { Background = Brushes.Transparent, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(0, 4, 0, 0) };
-            StackPanel pinCard = new StackPanel();
-            card.Child = pinCard;
-
-            // Label
-            TextBlock pl = TB("", 1, Th.Dim);
-            pl.Visibility = Visibility.Collapsed;
-            pl.HorizontalAlignment = HorizontalAlignment.Center;
-            pl.Margin = new Thickness(0, 0, 0, 12);
-            pinCard.Children.Add(pl);
-
-            // PIN grid (8 squares) — SOLID look, sharp
-            Grid pinGrid = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+            // 8 single-character boxes (5 - 3). A transparent TextBox on top receives the typing and pasting.
+            Grid boxHost = new Grid { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 22, 0, 0), Cursor = Cursors.IBeam };
+            StackPanel boxes = new StackPanel { Orientation = Orientation.Horizontal };
             int n = 8;
             pinDisplayChars = new TextBlock[n];
             pinBoxes = new Border[n];
-            double totalW = 420;
-            double boxW = (totalW - (n - 1) * 6) / n;
-            pinGrid.HorizontalAlignment = HorizontalAlignment.Center;
-            pinGrid.Width = totalW;
-            pinGrid.Height = 48;
             for (int i = 0; i < n; i++)
             {
-                pinGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(boxW + 6) });
-                Border b = new Border { BorderBrush = Th.Line, BorderThickness = new Thickness(1), Background = Th.Frozen("#99000000"), Width = boxW, Height = 48, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-                TextBlock tb = TB("", 20, Th.White, true, "Consolas");
+                if (i == 5)
+                {
+                    TextBlock dash = TB("-", 16, Th.Dim);
+                    dash.VerticalAlignment = VerticalAlignment.Center;
+                    dash.Margin = new Thickness(5, 0, 5, 0);
+                    boxes.Children.Add(dash);
+                }
+                Border b = new Border { Width = 40, Height = 46, Margin = new Thickness(3, 0, 3, 0), CornerRadius = new CornerRadius(7), BorderBrush = Th.Line, BorderThickness = new Thickness(1), Background = Th.Frozen("#80000000") };
+                TextBlock tb = TB("", 19, Th.White, true, "Consolas");
                 tb.HorizontalAlignment = HorizontalAlignment.Center;
                 tb.VerticalAlignment = VerticalAlignment.Center;
                 b.Child = tb;
                 pinBoxes[i] = b;
                 pinDisplayChars[i] = tb;
-                Grid.SetColumn(b, i);
-                Grid.SetColumnSpan(b, 1);
-                pinGrid.Children.Add(b);
+                boxes.Children.Add(b);
             }
-            pinCard.Children.Add(pinGrid);
+            boxHost.Children.Add(boxes);
 
-            // Thin divider inside card
-            Border d1 = new Border { Background = Th.LineSoft, Height = 1, Margin = new Thickness(0, 2, 0, 14), HorizontalAlignment = HorizontalAlignment.Stretch };
-            pinCard.Children.Add(d1);
+            pinInput = new TextBox
+            {
+                MaxLength = 24,
+                Background = Brushes.Transparent,
+                Foreground = Brushes.Transparent,
+                CaretBrush = Brushes.Transparent,
+                SelectionBrush = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                IsEnabled = false
+            };
+            pinInput.TextChanged += PinInputChanged;
+            boxHost.Children.Add(pinInput);
+            boxHost.MouseLeftButtonDown += delegate { if (pinInput.IsEnabled) pinInput.Focus(); };
+            root.Children.Add(boxHost);
 
-            // Optional username field
-            Grid optG = new Grid { Margin = new Thickness(0, 0, 0, 2) };
-            optG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
-            optG.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            TextBlock ul = TB("USERNAME", 9.5, Th.Dim, true, "Segoe UI Semibold");
-            ul.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(ul, 0);
-            optG.Children.Add(ul);
-            pinOptionalUser = Tb("", out pinOptionalUser);
-            pinOptionalUser.HorizontalAlignment = HorizontalAlignment.Stretch;
-            Grid.SetColumn(pinOptionalUser, 1);
-            optG.Children.Add(pinOptionalUser);
-            pinCard.Children.Add(optG);
+            pinRetryBtn = Btn("PEDIR OTRO CÓDIGO", "Ghost", delegate { StartAuth(); });
+            pinRetryBtn.HorizontalAlignment = HorizontalAlignment.Center;
+            pinRetryBtn.Margin = new Thickness(0, 20, 0, 0);
+            pinRetryBtn.Padding = new Thickness(20, 8, 20, 8);
+            pinRetryBtn.Visibility = Visibility.Collapsed;
+            root.Children.Add(pinRetryBtn);
 
-            TextBlock optHint = TB("Optional. Shown to the administrator on Discord for identification.", 9.5, Th.Dim);
-            optHint.Margin = new Thickness(130, 6, 0, 0);
-            optHint.HorizontalAlignment = HorizontalAlignment.Stretch;
-            optHint.TextWrapping = TextWrapping.Wrap;
-            pinCard.Children.Add(optHint);
-
-            root.Children.Add(card);
-
-            // Status line
-            pinStatus = TB("Press REQUEST PING to generate a PIN and send a request to the admin channel on Discord.", 10.5, Th.Muted, false, "Segoe UI Semibold");
-            pinStatus.TextAlignment = TextAlignment.Center;
-            pinStatus.HorizontalAlignment = HorizontalAlignment.Center;
-            pinStatus.TextWrapping = TextWrapping.Wrap;
-            pinStatus.Margin = new Thickness(0, 18, 0, 14);
-            root.Children.Add(pinStatus);
-
-            pinMsg = TB("", 10.5, Th.High, false, "Segoe UI Semibold");
-            pinMsg.TextWrapping = TextWrapping.Wrap;
-            pinMsg.Margin = new Thickness(2, 0, 2, 14);
-            pinMsg.HorizontalAlignment = HorizontalAlignment.Center;
-            pinMsg.TextAlignment = TextAlignment.Center;
-            root.Children.Add(pinMsg);
-
-            // Action row: solid Primary + Ghost
-            Grid btnRow = new Grid { Margin = new Thickness(0, 0, 0, 0) };
-            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            btnRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            pinRequestBtn = Btn("REQUEST PING", "Primary", delegate { DoRequestPin(); });
-            pinRequestBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
-            pinRequestBtn.Margin = new Thickness(0, 0, 6, 0);
-            pinRequestBtn.Padding = new Thickness(0, 12, 0, 12);
-            pinRequestBtn.FontSize = 13;
-            Grid.SetColumn(pinRequestBtn, 0);
-            btnRow.Children.Add(pinRequestBtn);
-            pinCancelBtn = Btn("CANCEL", "Ghost", delegate { DoCancelPin(); });
-            pinCancelBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
-            pinCancelBtn.Margin = new Thickness(6, 0, 0, 0);
-            pinCancelBtn.Padding = new Thickness(0, 12, 0, 12);
-            pinCancelBtn.FontSize = 13;
-            pinCancelBtn.IsEnabled = false;
-            pinCancelBtn.Opacity = 0.35;
-            Grid.SetColumn(pinCancelBtn, 1);
-            btnRow.Children.Add(pinCancelBtn);
-            root.Children.Add(btnRow);
-
-            TextBlock foot = TB("Server: " + Auth.ServerUrl, 9.5, Th.Dim, false, "Consolas");
-            foot.HorizontalAlignment = HorizontalAlignment.Center;
-            foot.Margin = new Thickness(0, 10, 0, 0);
-            root.Children.Add(foot);
+            pinBanner = TB("comprobando conexión...", 9.5, Th.Dim, false, "Consolas");
+            pinBanner.HorizontalAlignment = HorizontalAlignment.Center;
+            pinBanner.VerticalAlignment = VerticalAlignment.Bottom;
 
             SetPinDisplay("");
-            ThreadPool.QueueUserWorkItem(delegate { Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(); })); });
+            UpdatePinBanner();
             v.Children.Add(root);
+            v.Children.Add(pinBanner);
             return v;
         }
 
-        void SetPinWaitingUI(bool waiting)
+        void FocusPinInput()
         {
-            lock (pinLock)
+            Dispatcher.BeginInvoke(new Action(delegate
             {
-                pinWaiting = waiting;
-            }
-            if (pinRequestBtn != null)
-            {
-                pinRequestBtn.IsEnabled = !waiting;
-                pinRequestBtn.Opacity = waiting ? 0.4 : 1.0;
-            }
-            if (pinCancelBtn != null)
-            {
-                pinCancelBtn.IsEnabled = waiting;
-                pinCancelBtn.Opacity = waiting ? 1.0 : 0.4;
-            }
-            if (pinOptionalUser != null) pinOptionalUser.IsEnabled = !waiting;
+                if (pinInput != null && pinInput.IsEnabled) pinInput.Focus();
+                SetPinDisplay(pinInput != null ? pinInput.Text : "");
+            }), DispatcherPriority.Input);
         }
 
-        void DoRequestPin()
+        void SetPinInputText(string text)
         {
-            if (pinWaiting) return;
-            pinMsg.Text = "";
-            string optUser = (pinOptionalUser.Text ?? "").Trim();
-            SetPinDisplay("");
-            SetPinWaitingUI(true);
-            if (pinStatus != null) { pinStatus.Foreground = Th.Muted; pinStatus.Text = "Solicitando PIN..."; }
+            pinInputBusy = true;
+            pinInput.Text = text;
+            pinInput.CaretIndex = text.Length;
+            pinInputBusy = false;
+            SetPinDisplay(text);
+        }
+
+        // Keeps only letters and digits (so pasting "A1B2C-3DE" works), upper-cases, max 8; verifies when full.
+        void PinInputChanged(object sender, TextChangedEventArgs e)
+        {
+            if (pinInputBusy) return;
+            string raw = pinInput.Text ?? "";
+            StringBuilder sb = new StringBuilder();
+            foreach (char ch in raw.ToUpperInvariant())
+                if (((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) && sb.Length < 8) sb.Append(ch);
+            string clean = sb.ToString();
+            if (clean != raw) SetPinInputText(clean);
+            else SetPinDisplay(clean);
+            if (clean.Length == 8 && !pinVerifying) VerifyEnteredPin(clean);
+        }
+
+        // Asks the server for a code. The server sends it to the admin by private message; this PC never sees it.
+        void StartAuth()
+        {
+            if (pinRequesting || pinVerifying) return;
+            pinRequesting = true;
+            pinRetryBtn.Visibility = Visibility.Collapsed;
+            pinInput.IsEnabled = false;
+            SetPinInputText("");
+            SetPinStatus("Enviando el código al administrador...", Th.Muted);
             ThreadPool.QueueUserWorkItem(delegate
             {
-                CancellationTokenSource cts = new CancellationTokenSource();
-                Interlocked.Exchange(ref pinCancellation, cts);
-                try
+                PinResult rq = Auth.RequestPin(null);
+                Dispatcher.BeginInvoke(new Action(delegate
                 {
-                    PinResult rq = Auth.RequestPin(string.IsNullOrWhiteSpace(optUser) ? null : optUser);
-                    Dispatcher.BeginInvoke(new Action(delegate
+                    pinRequesting = false;
+                    if (!rq.Ok)
                     {
-                        if (!rq.Ok)
-                        {
-                            SetPinWaitingUI(false);
-                            pinMsg.Foreground = Th.High;
-                            pinMsg.Text = rq.Error ?? "Error al solicitar PIN";
-                            if (pinStatus != null) { pinStatus.Foreground = Th.High; pinStatus.Text = "No se pudo solicitar el PIN al servidor."; }
-                            return;
-                        }
-                        SetPinDisplay(rq.Session != null ? rq.Session.Pin : rq.Status);
-                        pinStatus.Foreground = Th.Med;
-                        pinStatus.Text = "Esperando aprobación en Discord... (t=0s)";
-                        if (rq.Session != null)
-                        {
-                            if (string.IsNullOrWhiteSpace(rq.Session.Username) && !string.IsNullOrWhiteSpace(optUser))
-                                rq.Session.Username = optUser.Trim();
-                        }
-                        PinSession mySession = rq.Session;
-                        ThreadPool.QueueUserWorkItem(delegate
-                        {
-                            PinResult final = Auth.PollUntilResolved(mySession, 900, 3000, delegate (string statusMsg)
-                            {
-                                Dispatcher.BeginInvoke(new Action(delegate
-                                {
-                                    if (pinStatus != null) { pinStatus.Foreground = Th.Med; pinStatus.Text = statusMsg; }
-                                }));
-                            }, cts.Token);
-                            Dispatcher.BeginInvoke(new Action(delegate
-                            {
-                                SetPinWaitingUI(false);
-                                if (cts.IsCancellationRequested) return;
-                                if (final.Ok && final.Status == "approved" && final.Session != null)
-                                {
-                                    pinSession = final.Session;
-                                    pinStatus.Foreground = Th.Ok;
-                                    pinStatus.Text = "✅ PIN aprobado. Empezando escaneo...";
-                                    Toast("Autorización concedida", "PIN aprobado por el administrador", Th.Ok);
-                                    Show(1);
-                                }
-                                else
-                                {
-                                    pinMsg.Foreground = Th.High;
-                                    pinMsg.Text = final.Error ?? (final.Status == "expired" ? "Tiempo agotado o PIN expirado. Vuelve a pulsar REQUEST PING." : "Acceso denegado");
-                                    if (pinStatus != null)
-                                    {
-                                        pinStatus.Foreground = final.Status == "expired" ? Th.Med : Th.High;
-                                        pinStatus.Text = final.Status == "expired" ? "PIN expirado. Vuelve a pulsar REQUEST PING." : (final.Error ?? "Acceso denegado");
-                                    }
-                                }
-                            }));
-                        });
-                    }));
-                }
-                catch (Exception ex)
-                {
-                    Dispatcher.BeginInvoke(new Action(delegate
-                    {
-                        SetPinWaitingUI(false);
-                        pinMsg.Foreground = Th.High;
-                        pinMsg.Text = "Error: " + ex.Message;
-                    }));
-                }
+                        SetPinStatus(rq.Error ?? "No se pudo pedir el código.", Th.High);
+                        pinRetryBtn.Visibility = Visibility.Visible;
+                        return;
+                    }
+                    SetPinStatus("Pídele el código al administrador y escríbelo aquí", Th.Muted);
+                    pinInput.IsEnabled = true;
+                    FocusPinInput();
+                }));
             });
         }
 
-        void DoCancelPin()
+        void VerifyEnteredPin(string code)
         {
-            lock (pinLock) pinWaiting = false;
-            CancellationTokenSource cts = Interlocked.Exchange(ref pinCancellation, null);
-            try { if (cts != null) cts.Cancel(); } catch { }
-            SetPinWaitingUI(false);
-            if (pinStatus != null) { pinStatus.Foreground = Th.Muted; pinStatus.Text = "Solicitud cancelada. Pulsa REQUEST PING para volver a solicitar."; }
+            pinVerifying = true;
+            pinInput.IsEnabled = false;
+            SetPinStatus("Verificando tu PIN de seguridad...", Th.Muted);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                PinResult r = Auth.VerifyPin(code);
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    pinVerifying = false;
+                    if (r.Ok && r.Status == "approved" && r.Session != null)
+                    {
+                        pinSession = r.Session;
+                        SetPinStatus("Código correcto. Empezando el escaneo...", Th.Ok);
+                        Toast("Autorización concedida", "Código correcto", Th.Ok);
+                        StartScan();
+                        return;
+                    }
+                    SetPinStatus(r.Error ?? "Código incorrecto", Th.High);
+                    SetPinInputText("");
+                    pinRetryBtn.Visibility = Visibility.Visible;   // lost / rejected / expired code: ask for a new one
+                    if (r.Status == "expired") return;
+                    pinInput.IsEnabled = true;
+                    FocusPinInput();
+                }));
+            });
         }
 
         Grid BuildLogin()
@@ -1249,17 +1167,18 @@ namespace Noxxer
             Size sz;
             switch (v)
             {
-                case 0: sz = new Size(640, 470); break;
+                case 0: sz = new Size(640, 450); break;
                 case 1: sz = new Size(640, 400); break;
                 case 4: sz = new Size(900, 600); break;
-                case 5: sz = new Size(640, 520); break;
+                case 5: sz = new Size(640, 400); break;
                 default: sz = new Size(640, 400); break;
             }
             Width = sz.Width; Height = sz.Height;
             Rect wa = SystemParameters.WorkArea;
             Left = wa.Left + (wa.Width - sz.Width) / 2;
             Top = wa.Top + (wa.Height - sz.Height) / 2;
-            statusText.Visibility = v == 2 ? Visibility.Collapsed : Visibility.Visible;
+            progressBox.Visibility = (v == 2 || v == 3) ? Visibility.Visible : Visibility.Collapsed;
+            subtitleText.Visibility = v == 2 ? Visibility.Visible : Visibility.Collapsed;
 
             if (old >= 0 && old != v)
             {
@@ -1283,28 +1202,18 @@ namespace Noxxer
             yi.BeginTime = fi.BeginTime;
             tt.BeginAnimation(TranslateTransform.YProperty, yi);
 
-            if (v == 1) statusText.Text = "ready";
-            if (v == 0) statusText.Text = "welcome";
-            if (v == 5)
+            if (v == 5 && !Program.PreviewMode)
             {
-                statusText.Text = "scan authorization required";
-                if (!Program.PreviewMode) RunConnectionDiagnostic();
+                RunConnectionDiagnostic();
+                StartAuth();
             }
         }
 
         void RunConnectionDiagnostic()
         {
-            ThreadPool.QueueUserWorkItem(delegate
-            {
-                Dispatcher.BeginInvoke(new Action(delegate
-                {
-                    if (pinBanner != null) { pinBanner.Text = "Comprobando conexión con el servidor..."; pinBanner.Foreground = Th.Muted; pinBanner.Cursor = Cursors.Wait; }
-                }));
-                Dispatcher.BeginInvoke(new Action(delegate { UpdatePinBanner(true); }));
-            });
+            if (pinBanner != null) { pinBanner.Text = "comprobando conexión..."; pinBanner.Foreground = Th.Muted; }
+            UpdatePinBanner(true);
         }
-
-
 
         void OnLoaded(object s, RoutedEventArgs e)
         {
@@ -1353,6 +1262,8 @@ namespace Noxxer
             dHigh = dMed = dLow = dFiles = 0;
             shownProg = 0;
             lastHit.Text = "";
+            lastStatus = "";
+            statusText.Text = "";
             eng.Start();
             Show(2);
             bool fivem = false;
@@ -1516,7 +1427,8 @@ namespace Noxxer
             {
                 dotPhase += dt * 2.6;
                 int n = 1 + ((int)dotPhase % 4);
-                string st = "scanning" + new string('.', n);
+                string act0 = eng.Activity;
+                string st = string.IsNullOrEmpty(act0) ? "scanning" + new string('.', n) : act0;
                 if (st != lastStatus && statusText.Text != "stopping") { statusText.Text = st; lastStatus = st; }
 
                 int ci = Math.Min(eng.Current, eng.Modules.Count - 1);
