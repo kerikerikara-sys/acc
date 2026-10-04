@@ -873,7 +873,17 @@ namespace Noxxer
         void UpdatePinBanner(bool force = false)
         {
             if (pinBanner == null) return;
-            AuthResult r = Auth.PingServer();
+            // The ping can take up to 15 s when the server is down: never run it on the UI thread.
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                AuthResult res = Auth.PingServer();
+                Dispatcher.BeginInvoke(new Action(delegate { ApplyPinBanner(res, force); }));
+            });
+        }
+
+        void ApplyPinBanner(AuthResult r, bool force)
+        {
+            if (pinBanner == null) return;
             pinBanner.Text = r.Error ?? "";
             pinBanner.Foreground = r.Ok ? Th.Ok : Th.High;
             pinBanner.Cursor = Cursors.Hand;
