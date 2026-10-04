@@ -1,12 +1,19 @@
-require('dotenv').config();
+// Carga el .env de esta carpeta (server/) aunque se arranque desde otro sitio.
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const os = require('os');
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const Database = require('./database.js');
+const mountAdmin = require('./admin.js');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
+
+// Sitio web de marketing (carpeta web/ en la raiz del repo) servido en /site,
+// y sus archivos sueltos. El panel de admin se monta mas abajo en /admin.
+app.use('/site', express.static(path.join(__dirname, '..', 'web')));
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -52,8 +59,15 @@ Database.init().then((db) => {
   }
 
   app.get('/', (req, res) => {
+    // Los navegadores piden HTML: les damos la web. El escaner (ACNoxxer.exe)
+    // no manda Accept: text/html y sigue recibiendo el JSON de estado.
+    if ((req.headers.accept || '').includes('text/html'))
+      return res.sendFile(path.join(__dirname, '..', 'web', 'index.html'));
     res.json({ ok: true, service: 'Noxxer Licensing', time: new Date().toISOString() });
   });
+
+  // Panel de admin + endpoints del enlace de descarga.
+  mountAdmin(app, db);
 
   const requireJson = (req, res, next) => {
     if (!req.is('json')) return res.status(400).json({ ok: false, error: 'Body JSON requerido' });

@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      ============================================================
+      NOMBRE DE LA MARCA
+      Cambia el valor de BRAND (y BRAND_DOMAIN si quieres) una sola
+      vez aqui y se actualiza en toda la pagina automaticamente.
+      ============================================================
+    -->
+    <script>
+      window.SITE = {
+        BRAND: "Noxer",
+        BRAND_DOMAIN: "noxer.ac",
+        DISCORD_URL: "#",
+        // Enlace de descarga por defecto (se usa si el servidor no responde).
+        DOWNLOAD_URL: "#",
+        // Base del servidor/API donde corre index.js. Dejalo vacio ("") si la
+        // web se sirve desde el mismo servidor; si la web esta en otro hosting,
+        // pon aqui la URL del servidor, p.ej. "https://api.noxer.ac".
+        API_BASE: ""
+      };
+    </script>
+
+    <title>Noxer — Deteccion de cheats y screenshare para FiveM</title>
+    <meta name="description" content="Escaner anticheat para FiveM. Revisa el PC de un sospechoso en segundos y detecta inyectores, DMA, trazas de ejecucion y archivos modificados con informes claros." />
+    <meta name="theme-color" content="#0a84ff" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Bai+Jamjuree:wght@500;600;700&display=swap" rel="stylesheet" />
+
+    <style>
+      :root {
+        --bg: #08080c;
+        --bg-soft: #0d0d14;
+        --panel: #101019;
+        --panel-2: #14141f;
+        --border: #1e1e2b;
+        --border-soft: #191925;
+        --text: #eef0f6;
+        --muted: #9aa0b4;
+        --muted-2: #6b7189;
+        --blue: #2f67f6;
+        --blue-2: #6571ff;
+        --blue-3: #095af2;
+        --grad: linear-gradient(135deg, #6571ff 0%, #2f67f6 55%, #095af2 100%);
+        --glow: 0 0 60px rgba(47,103,246,.35);
+        --radius: 16px;
+        --maxw: 1140px;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      h1, h2, h3, .brandmark { font-family: "Bai Jamjuree", "Inter", sans-serif; letter-spacing: -.01em; }
+      a { color: inherit; text-decoration: none; }
+      img { max-width: 100%; display: block; }
+
+      .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+      /* ambient background */
+      .aura {
+        position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+      }
+      .aura::before, .aura::after {
+        content: ""; position: absolute; border-radius: 50%; filter: blur(120px);
+      }
+      .aura::before { top: -200px; left: 50%; translate: -50% 0; width: 820px; height: 620px; background: radial-gradient(circle, rgba(47,103,246,.28), transparent 65%); }
+      .aura::after { bottom: -300px; right: -200px; width: 700px; height: 700px; background: radial-gradient(circle, rgba(101,113,255,.18), transparent 65%); }
+      .grid-lines {
+        position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        background-image: linear-gradient(var(--border-soft) 1px, transparent 1px), linear-gradient(90deg, var(--border-soft) 1px, transparent 1px);
+        background-size: 54px 54px;
+        mask-image: radial-gradient(circle at 50% 0%, rgba(0,0,0,.5), transparent 70%);
+        opacity: .5;
+      }
+
+      main, header, footer { position: relative; z-index: 1; }
+
+      /* header */
+      header {
+        position: sticky; top: 0; z-index: 50;
+        backdrop-filter: blur(14px);
+        background: rgba(8,8,12,.72);
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .nav { display: flex; align-items: center; justify-content: space-between; height: 70px; }
+      .logo { display: flex; align-items: center; gap: 11px; font-weight: 700; }
+      .logo .brandmark { font-size: 20px; font-weight: 700; }
+      .logo svg { width: 30px; height: 30px; filter: drop-shadow(0 0 10px rgba(47,103,246,.55)); }
+      .nav-links { display: flex; gap: 32px; align-items: center; }
+      .nav-links a { color: var(--muted); font-size: 15px; font-weight: 500; transition: color .2s; }
+      .nav-links a:hover { color: var(--text); }
+      .nav-cta { display: flex; gap: 12px; align-items: center; }
+
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+        font-family: inherit; font-weight: 600; font-size: 15px;
+        padding: 11px 22px; border-radius: 11px; cursor: pointer; border: 1px solid transparent;
+        transition: transform .15s ease, box-shadow .2s ease, background .2s;
+      }
+      .btn-primary { background: var(--grad); color: #fff; box-shadow: 0 8px 30px rgba(47,103,246,.4); }
+      .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 12px 38px rgba(47,103,246,.55); }
+      .btn-ghost { background: rgba(255,255,255,.04); color: var(--text); border-color: var(--border); }
+      .btn-ghost:hover { background: rgba(255,255,255,.08); border-color: #2c2c3d; }
+      .btn-lg { padding: 15px 30px; font-size: 16px; }
+
+      .menu-toggle { display: none; background: none; border: 0; color: var(--text); cursor: pointer; }
+
+      /* hero */
+      .hero { padding: 96px 0 72px; text-align: center; }
+      .pill {
+        display: inline-flex; align-items: center; gap: 9px;
+        padding: 7px 15px; border-radius: 999px; font-size: 13.5px; font-weight: 500;
+        background: rgba(47,103,246,.1); border: 1px solid rgba(47,103,246,.28); color: #bcc8ff;
+        margin-bottom: 28px;
+      }
+      .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 10px #4ade80; }
+      .hero h1 { font-size: clamp(38px, 6.2vw, 68px); line-height: 1.04; margin: 0 0 22px; font-weight: 700; }
+      .hero h1 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+      .hero p.lead { font-size: clamp(16px, 2.3vw, 20px); color: var(--muted); max-width: 640px; margin: 0 auto 36px; }
+      .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+      .trust { margin-top: 30px; display: flex; gap: 26px; justify-content: center; flex-wrap: wrap; color: var(--muted-2); font-size: 14px; }
+      .trust span { display: inline-flex; align-items: center; gap: 7px; }
+      .trust svg { width: 16px; height: 16px; color: var(--blue-2); }
+
+      /* mock console panel */
+      .showcase { margin: 60px auto 0; max-width: 940px; }
+      .console {
+        background: linear-gradient(180deg, var(--panel) 0%, #0b0b12 100%);
+        border: 1px solid var(--border); border-radius: 18px; overflow: hidden;
+        box-shadow: 0 40px 120px rgba(0,0,0,.6), var(--glow);
+      }
+      .console-bar { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--border-soft); background: rgba(255,255,255,.02); }
+      .console-bar .dots { display: flex; gap: 7px; }
+      .console-bar .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+      .console-bar .dots i:nth-child(1){ background:#ff5f57; } .console-bar .dots i:nth-child(2){ background:#febc2e; } .console-bar .dots i:nth-child(3){ background:#28c840; }
+      .console-bar .title { font-size: 13px; color: var(--muted-2); margin-left: 8px; font-family: "Bai Jamjuree"; }
+      .console-body { padding: 24px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13.5px; }
+      .scan-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-radius: 10px; margin-bottom: 8px; background: rgba(255,255,255,.015); border: 1px solid var(--border-soft); }
+      .scan-row .name { color: #c6cbe0; }
+      .scan-row .tag { font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 999px; font-family: "Inter"; }
+      .tag.clean { background: rgba(74,222,128,.12); color: #6ee7a0; border: 1px solid rgba(74,222,128,.25); }
+      .tag.warn { background: rgba(251,191,36,.12); color: #fbd24e; border: 1px solid rgba(251,191,36,.25); }
+      .tag.flag { background: rgba(248,113,113,.14); color: #ff8a8a; border: 1px solid rgba(248,113,113,.28); }
+      .scan-summary { margin-top: 16px; padding: 14px 16px; border-radius: 10px; background: rgba(47,103,246,.08); border: 1px solid rgba(47,103,246,.22); color: #c6cbe0; font-size: 12.5px; display: flex; justify-content: space-between; align-items: center; }
+
+      /* sections */
+      section { padding: 88px 0; }
+      .sec-head { text-align: center; max-width: 620px; margin: 0 auto 56px; }
+      .sec-head .eyebrow { color: var(--blue-2); font-weight: 600; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 14px; }
+      .sec-head h2 { font-size: clamp(28px, 4vw, 42px); margin: 0 0 16px; }
+      .sec-head p { color: var(--muted); font-size: 17px; margin: 0; }
+
+      /* features */
+      .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+      .card {
+        background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+        padding: 28px; transition: transform .2s, border-color .2s, box-shadow .2s;
+      }
+      .card:hover { transform: translateY(-4px); border-color: #2c3356; box-shadow: 0 20px 50px rgba(0,0,0,.4); }
+      .card .ic { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; background: rgba(47,103,246,.12); border: 1px solid rgba(47,103,246,.25); margin-bottom: 18px; }
+      .card .ic svg { width: 22px; height: 22px; color: var(--blue-2); }
+      .card h3 { font-size: 18.5px; margin: 0 0 9px; }
+      .card p { color: var(--muted); font-size: 14.5px; margin: 0; }
+
+      /* how it works */
+      .steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; }
+      .step { text-align: center; padding: 10px; }
+      .step .num { width: 54px; height: 54px; margin: 0 auto 20px; border-radius: 14px; display: grid; place-items: center; font-family: "Bai Jamjuree"; font-size: 22px; font-weight: 700; background: var(--grad); color: #fff; box-shadow: var(--glow); }
+      .step h3 { font-size: 19px; margin: 0 0 10px; }
+      .step p { color: var(--muted); font-size: 15px; margin: 0; }
+
+      /* pricing */
+      .pricing { display: grid; grid-template-columns: repeat(3,1fr); gap: 22px; align-items: stretch; }
+      .plan { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px 28px; display: flex; flex-direction: column; }
+      .plan.featured { border-color: rgba(47,103,246,.55); box-shadow: 0 0 0 1px rgba(47,103,246,.25), 0 30px 70px rgba(0,0,0,.45); background: linear-gradient(180deg, rgba(47,103,246,.08), var(--panel) 40%); }
+      .plan .badge { position: absolute; top: -13px; left: 50%; translate: -50% 0; background: var(--grad); color: #fff; font-size: 12px; font-weight: 700; padding: 5px 15px; border-radius: 999px; font-family: "Inter"; }
+      .plan h3 { font-size: 20px; margin: 0 0 6px; }
+      .plan .desc { color: var(--muted); font-size: 14px; margin: 0 0 20px; min-height: 40px; }
+      .plan .price { font-family: "Bai Jamjuree"; font-size: 44px; font-weight: 700; margin-bottom: 4px; }
+      .plan .price span { font-size: 16px; color: var(--muted); font-weight: 500; font-family: "Inter"; }
+      .plan ul { list-style: none; padding: 0; margin: 22px 0 28px; display: grid; gap: 12px; }
+      .plan li { display: flex; gap: 11px; align-items: flex-start; color: #cfd3e4; font-size: 14.5px; }
+      .plan li svg { width: 18px; height: 18px; color: var(--blue-2); flex: none; margin-top: 2px; }
+      .plan .btn { width: 100%; margin-top: auto; }
+
+      /* faq */
+      .faq { max-width: 780px; margin: 0 auto; }
+      details { background: var(--panel); border: 1px solid var(--border); border-radius: 13px; margin-bottom: 12px; overflow: hidden; }
+      details[open] { border-color: #2c3356; }
+      summary { padding: 20px 22px; cursor: pointer; font-weight: 600; font-size: 16px; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+      summary::-webkit-details-marker { display: none; }
+      summary .chev { transition: transform .25s; color: var(--blue-2); flex: none; }
+      details[open] summary .chev { transform: rotate(180deg); }
+      details .answer { padding: 0 22px 20px; color: var(--muted); font-size: 15px; }
+
+      /* download / cta band */
+      .cta-band { text-align: center; }
+      .cta-inner { background: linear-gradient(135deg, rgba(47,103,246,.14), rgba(101,113,255,.06)); border: 1px solid rgba(47,103,246,.3); border-radius: 24px; padding: 60px 32px; box-shadow: var(--glow); }
+      .cta-inner h2 { font-size: clamp(28px, 4vw, 40px); margin: 0 0 14px; }
+      .cta-inner p { color: var(--muted); font-size: 17px; max-width: 520px; margin: 0 auto 30px; }
+      .req { margin-top: 20px; color: var(--muted-2); font-size: 13.5px; }
+
+      /* footer */
+      footer { border-top: 1px solid var(--border-soft); padding: 48px 0 32px; margin-top: 40px; }
+      .foot { display: flex; justify-content: space-between; align-items: center; gap: 24px; flex-wrap: wrap; }
+      .foot .logo .brandmark { font-size: 18px; }
+      .foot-links { display: flex; gap: 26px; flex-wrap: wrap; }
+      .foot-links a { color: var(--muted); font-size: 14.5px; }
+      .foot-links a:hover { color: var(--text); }
+      .copy { color: var(--muted-2); font-size: 13.5px; margin-top: 24px; }
+      .disclaimer { color: var(--muted-2); font-size: 12.5px; margin-top: 10px; max-width: 760px; line-height: 1.6; }
+
+      @media (max-width: 900px) {
+        .features, .steps, .pricing { grid-template-columns: 1fr; }
+        .nav-links { display: none; }
+        .menu-toggle { display: inline-flex; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="aura"></div>
+    <div class="grid-lines"></div>
+
+    <header>
+      <div class="wrap nav">
+        <a href="#" class="logo">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#6571ff"/><stop offset=".55" stop-color="#2f67f6"/><stop offset="1" stop-color="#095af2"/>
+              </linearGradient>
+            </defs>
+            <path d="M24 3L6 10v12c0 11.3 7.7 18.9 18 23 10.3-4.1 18-11.7 18-23V10L24 3z" fill="url(#lg)" opacity=".18"/>
+            <path d="M24 3L6 10v12c0 11.3 7.7 18.9 18 23 10.3-4.1 18-11.7 18-23V10L24 3z" stroke="url(#lg)" stroke-width="2" fill="none"/>
+            <path d="M17 24.5l4.8 4.8L32 19" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+          <span class="brandmark" data-brand></span>
+        </a>
+        <nav class="nav-links">
+          <a href="#features">Funciones</a>
+          <a href="#how">Como funciona</a>
+          <a href="#pricing">Precios</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <div class="nav-cta">
+          <a class="btn btn-ghost" data-discord>Discord</a>
+          <a class="btn btn-primary" href="#download">Descargar</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- HERO -->
+      <section class="hero">
+        <div class="wrap">
+          <div class="pill"><span class="dot"></span> Deteccion en tiempo real para servidores de FiveM</div>
+          <h1>Atrapa tramposos en<br /><span class="grad">segundos, no en horas</span></h1>
+          <p class="lead">
+            <span data-brand></span> revisa el PC de un sospechoso durante un screenshare consentido y
+            saca a la luz inyectores, hardware DMA, trazas de ejecucion borradas y archivos modificados —
+            con un informe claro que tu staff entiende al instante.
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-primary btn-lg" href="#download">Descargar escaner</a>
+            <a class="btn btn-ghost btn-lg" href="#how">Ver como funciona</a>
+          </div>
+          <div class="trust">
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Analisis 100% local</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Informe listo en &lt; 60s</span>
+            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Sin instalacion</span>
+          </div>
+
+          <!-- showcase -->
+          <div class="showcase">
+            <div class="console">
+              <div class="console-bar">
+                <div class="dots"><i></i><i></i><i></i></div>
+                <span class="title" data-brand-title></span>
+              </div>
+              <div class="console-body">
+                <div class="scan-row"><span class="name">› Integridad del sistema (Secure Boot, logs)</span><span class="tag clean">LIMPIO</span></div>
+                <div class="scan-row"><span class="name">› Hardware DMA (Xilinx / FT601 / KMBox)</span><span class="tag clean">LIMPIO</span></div>
+                <div class="scan-row"><span class="name">› Procesos y DLLs en FiveM / GTA</span><span class="tag warn">REVISAR</span></div>
+                <div class="scan-row"><span class="name">› Trazas de ejecucion (Prefetch, BAM, UserAssist)</span><span class="tag flag">DETECTADO</span></div>
+                <div class="scan-row"><span class="name">› Papelera y archivos borrados</span><span class="tag flag">DETECTADO</span></div>
+                <div class="scan-summary"><span>Analisis completado · 14 modulos</span><span>2 indicadores de alta severidad</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FEATURES -->
+      <section id="features">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">Cobertura completa</div>
+            <h2>Un escaneo, catorce frentes</h2>
+            <p>Cada modulo busca una clase distinta de evidencia, para que nada se escape por un solo punto ciego.</p>
+          </div>
+          <div class="features">
+            <div class="card">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+              <h3>Procesos y memoria</h3>
+              <p>Revisa nombres, titulos de ventana y DLLs inusuales dentro de los procesos de FiveM y GTA, con un escaneo de firmas en memoria ejecutable.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></div>
+              <h3>Hardware DMA</h3>
+              <p>Identifica dispositivos Xilinx, FTDI FT601 y KMBox en el arbol PnP, el hardware que usan los cheats mas dificiles de atrapar.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 7l10 5 10-5"/></svg></div>
+              <h3>Drivers mapeados</h3>
+              <p>Detecta drivers abusados por mappers conocidos y drivers cargados desde carpetas de usuario fuera de lo normal.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M12 3v18"/><circle cx="12" cy="12" r="9"/></svg></div>
+              <h3>Trazas de ejecucion</h3>
+              <p>Lee UserAssist, MuiCache, AppCompat, BAM, Prefetch, Jump lists y el historial de PowerShell para reconstruir que se ejecuto.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></div>
+              <h3>Sistema de archivos</h3>
+              <p>Busca nombres de archivos y carpetas sospechosos, y revisa cadenas dentro de exe, dll, sys y archivos de configuracion.</p>
+            </div>
+            <div class="card">
+              <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18"/></svg></div>
+              <h3>Navegadores y Discord</h3>
+              <p>Repasa historial, busquedas y sesiones de los navegadores mas comunes, y la cache local de Discord en busca de rastros.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- HOW -->
+      <section id="how" style="background: var(--bg-soft); border-block: 1px solid var(--border-soft);">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">Tres pasos</div>
+            <h2>Del sospechoso al veredicto</h2>
+            <p>Sin agentes de fondo ni cuentas complicadas. El jugador acepta, tu escaneas, el informe queda guardado.</p>
+          </div>
+          <div class="steps">
+            <div class="step">
+              <div class="num">1</div>
+              <h3>El jugador ejecuta el escaner</h3>
+              <p>Un solo ejecutable, sin instalacion. Pide permisos de administrador para leer Prefetch, BAM y los registros de eventos.</p>
+            </div>
+            <div class="step">
+              <div class="num">2</div>
+              <h3>Analisis local en segundos</h3>
+              <p>Los catorce modulos corren en el propio PC. Nada se escanea a ciegas: cada hallazgo apunta a un archivo, proceso o rastro concreto.</p>
+            </div>
+            <div class="step">
+              <div class="num">3</div>
+              <h3>Informe claro para el staff</h3>
+              <p>Los resultados llegan ordenados por severidad a tu panel, listos para que tu equipo tome la decision con contexto.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRICING -->
+      <section id="pricing">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">Planes</div>
+            <h2>Precios para cada comunidad</h2>
+            <p>Desde servidores pequeños hasta redes grandes. Elige el plan y empieza a escanear hoy mismo.</p>
+          </div>
+          <div class="pricing">
+            <div class="plan">
+              <h3>Inicial</h3>
+              <p class="desc">Para servidores pequeños que empiezan a filtrar tramposos.</p>
+              <div class="price">$12<span>/mes</span></div>
+              <ul>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Escaneos ilimitados</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Los 14 modulos de deteccion</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> 2 cuentas de staff</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Soporte por Discord</li>
+              </ul>
+              <a class="btn btn-ghost" href="#download">Empezar</a>
+            </div>
+            <div class="plan featured">
+              <div class="badge">Mas popular</div>
+              <h3>Profesional</h3>
+              <p class="desc">Para comunidades activas que necesitan mas manos revisando.</p>
+              <div class="price">$22<span>/mes</span></div>
+              <ul>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Todo lo del plan Inicial</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> 10 cuentas de staff</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Palabras clave personalizadas</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Historial de informes</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Soporte prioritario</li>
+              </ul>
+              <a class="btn btn-primary" href="#download">Empezar</a>
+            </div>
+            <div class="plan">
+              <h3>Red</h3>
+              <p class="desc">Para redes grandes con varios servidores y mucho staff.</p>
+              <div class="price">$45<span>/mes</span></div>
+              <ul>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Todo lo del plan Profesional</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Cuentas de staff ilimitadas</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Acceso a API</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Marca personalizada</li>
+                <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg> Gestor de cuenta dedicado</li>
+              </ul>
+              <a class="btn btn-ghost" href="#download">Contactar</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section id="faq" style="background: var(--bg-soft); border-block: 1px solid var(--border-soft);">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">Dudas comunes</div>
+            <h2>Preguntas frecuentes</h2>
+          </div>
+          <div class="faq">
+            <details open>
+              <summary>Que es <span data-brand></span>? <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+              <div class="answer">Es una herramienta de screenshare para FiveM. Durante una revision consentida, analiza el PC del sospechoso en busca de indicios de cheats, inyectores, hardware DMA y rastros de ejecucion, y entrega un informe claro por severidad.</div>
+            </details>
+            <details>
+              <summary>Modifica o daña el PC que analiza? <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+              <div class="answer">No. El escaner solo lee informacion del sistema para la deteccion; no escribe ni elimina archivos en el equipo analizado. El analisis ocurre de forma local en ese PC.</div>
+            </details>
+            <details>
+              <summary>Necesito instalar algo? <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+              <div class="answer">No. Es un unico ejecutable que se descarga y se abre. Pide permisos de administrador para poder leer artefactos como Prefetch, BAM y los registros de eventos; sin ellos funciona en modo limitado.</div>
+            </details>
+            <details>
+              <summary>Un hallazgo es prueba definitiva de trampa? <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+              <div class="answer">Un hallazgo es un indicador, no una condena. Cada item debe leerse en contexto. La herramienta reune evidencia para que tu staff decida con mejor informacion.</div>
+            </details>
+            <details>
+              <summary>Funciona en Windows? <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></summary>
+              <div class="answer">Si. Esta diseñado para Windows, el sistema donde corre FiveM. Muchas comprobaciones dependen de artefactos propios de Windows.</div>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- DOWNLOAD / CTA -->
+      <section id="download" class="cta-band">
+        <div class="wrap">
+          <div class="cta-inner">
+            <h2>Empieza a limpiar tu servidor hoy</h2>
+            <p>Descarga el escaner, haz tu primer screenshare y mira la diferencia en minutos.</p>
+            <div class="hero-cta">
+              <a class="btn btn-primary btn-lg" data-download>Descargar para Windows</a>
+              <a class="btn btn-ghost btn-lg" data-discord>Unirse al Discord</a>
+            </div>
+            <div class="req">Requiere Windows 10/11 · Se recomiendan permisos de administrador</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <div class="foot">
+          <a href="#" class="logo">
+            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M24 3L6 10v12c0 11.3 7.7 18.9 18 23 10.3-4.1 18-11.7 18-23V10L24 3z" stroke="url(#lg)" stroke-width="2" fill="none"/>
+              <path d="M17 24.5l4.8 4.8L32 19" stroke="url(#lg)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+            <span class="brandmark" data-brand></span>
+          </a>
+          <div class="foot-links">
+            <a href="#features">Funciones</a>
+            <a href="#pricing">Precios</a>
+            <a href="#faq">FAQ</a>
+            <a data-discord>Discord</a>
+          </div>
+        </div>
+        <div class="copy">© <span id="year"></span> <span data-brand></span>. Todos los derechos reservados.</div>
+        <div class="disclaimer">
+          <span data-brand></span> es una herramienta de verificacion para screenshares consentidos. Usala solo con
+          el consentimiento del jugador analizado y respetando las leyes de privacidad aplicables. Un hallazgo es un
+          indicador, no una prueba concluyente.
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      (function () {
+        var S = window.SITE || {};
+        document.querySelectorAll("[data-brand]").forEach(function (el) { el.textContent = S.BRAND; });
+        document.querySelectorAll("[data-brand-title]").forEach(function (el) { el.textContent = S.BRAND + " — scanner"; });
+        document.title = S.BRAND + " — Deteccion de cheats y screenshare para FiveM";
+        document.querySelectorAll("[data-discord]").forEach(function (el) { el.href = S.DISCORD_URL || "#"; });
+
+        function setDownload(url) {
+          document.querySelectorAll("[data-download]").forEach(function (el) {
+            el.href = url || "#";
+            if (url) el.setAttribute("target", "_blank"), el.setAttribute("rel", "noopener");
+          });
+        }
+        setDownload(S.DOWNLOAD_URL && S.DOWNLOAD_URL !== "#" ? S.DOWNLOAD_URL : "");
+
+        // Pide al servidor el enlace de descarga configurado desde el panel.
+        var base = (S.API_BASE || "").replace(/\/+$/, "");
+        fetch(base + "/api/download")
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (j) { if (j && j.ok && j.url) setDownload(j.url); })
+          .catch(function () {});
+
+        var y = document.getElementById("year"); if (y) y.textContent = new Date().getFullYear();
+      })();
+    </script>
+  </body>
+</html>

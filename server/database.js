@@ -102,6 +102,11 @@ async function init() {
     );
     CREATE INDEX IF NOT EXISTS idx_pins_pin ON pins(pin);
     CREATE INDEX IF NOT EXISTS idx_pins_status ON pins(status);
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
   `);
   dirty = true;
 
@@ -253,11 +258,26 @@ async function init() {
     return getPin(pin);
   }
 
+  function getSetting(key, fallback) {
+    const row = getOne('SELECT value FROM settings WHERE key = ?', [key]);
+    return row && row.value != null ? row.value : (fallback !== undefined ? fallback : null);
+  }
+
+  function setSetting(key, value) {
+    run(
+      `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      [key, value == null ? null : String(value), new Date().toISOString()]
+    );
+    return getSetting(key);
+  }
+
   const ctx = {
     SQL, db, save, run, getOne, getAll,
     hashPassword, verifyPassword, generateKey, generatePin,
     createLicense, getActiveUserFromLicense, isLicenseValid,
-    createPin, getPin, listPendingPins, approvePin, rejectPin
+    createPin, getPin, listPendingPins, approvePin, rejectPin,
+    getSetting, setSetting
   };
   save();
   return ctx;
